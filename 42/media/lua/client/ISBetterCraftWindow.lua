@@ -516,7 +516,7 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
     o.player = player
     o.playerNum = player:getPlayerNum()
     o.title = "Better Craft Window"
-    o.minimumWidth = 900
+    o.minimumWidth = 1050
     o.minimumHeight = 550
     o.resizable = true
 
@@ -549,7 +549,7 @@ function ISBetterCraftWindow.open(player)
 
     local screenWidth = getCore():getScreenWidth()
     local screenHeight = getCore():getScreenHeight()
-    local width = math.max(900, math.min(1350, screenWidth - 100))
+    local width = math.max(1050, math.min(1500, screenWidth - 100))
     local height = math.max(550, math.min(800, screenHeight - 100))
     local x = math.floor((screenWidth - width) / 2)
     local y = math.floor((screenHeight - height) / 2)
