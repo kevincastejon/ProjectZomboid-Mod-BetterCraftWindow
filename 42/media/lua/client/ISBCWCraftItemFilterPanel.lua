@@ -1,12 +1,13 @@
 require "ISUI/ISPanel"
 require "ISUI/ISTextEntryBox"
 require "ISUI/ISScrollingListBox"
+require "ISUI/ISComboBox"
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local FONT_SCALE = FONT_HGT_SMALL / 19
 local UI_BORDER_SPACING = 6
 local PANEL_WIDTH = 185 * FONT_SCALE
-local SEARCH_HEIGHT = FONT_HGT_SMALL + 8
+local CONTROL_HEIGHT = FONT_HGT_SMALL + 8
 
 ISBCWCraftItemFilterPanel = ISPanel:derive("ISBCWCraftItemFilterPanel")
 
@@ -17,12 +18,14 @@ end
 function ISBCWCraftItemFilterPanel:createChildren()
     ISPanel.createChildren(self)
 
+    local width = self.listBoxWidth or PANEL_WIDTH
+
     self.searchEntry = ISTextEntryBox:new(
         "",
         0,
         0,
-        self.listBoxWidth or PANEL_WIDTH,
-        SEARCH_HEIGHT
+        width,
+        CONTROL_HEIGHT
     )
     self.searchEntry:initialise()
     self.searchEntry:instantiate()
@@ -33,10 +36,27 @@ function ISBCWCraftItemFilterPanel:createChildren()
     end
     self:addChild(self.searchEntry)
 
-    self.itemList = ISScrollingListBox:new(
+    self.typeCombo = ISComboBox:new(
         0,
         self.searchEntry:getBottom() + UI_BORDER_SPACING,
-        self.listBoxWidth or PANEL_WIDTH,
+        width,
+        CONTROL_HEIGHT,
+        self,
+        ISBCWCraftItemFilterPanel.onTypeChanged
+    )
+    self.typeCombo:initialise()
+    self.typeCombo:instantiate()
+    self.typeCombo.font = UIFont.Small
+    self.typeCombo:addOptionWithData("Both", "Both")
+    self.typeCombo:addOptionWithData("Ingredient", "Ingredient")
+    self.typeCombo:addOptionWithData("Result", "Result")
+    self.typeCombo:selectData(self.filterType or "Both")
+    self:addChild(self.typeCombo)
+
+    self.itemList = ISScrollingListBox:new(
+        0,
+        self.typeCombo:getBottom() + UI_BORDER_SPACING,
+        width,
         0
     )
     self.itemList:initialise()
@@ -59,8 +79,49 @@ function ISBCWCraftItemFilterPanel:setSelectedFullName(fullName)
     self:rebuildVisibleList()
 end
 
+function ISBCWCraftItemFilterPanel:setFilterType(filterType)
+    self.filterType = filterType or "Both"
+
+    if self.typeCombo then
+        self.typeCombo:selectData(self.filterType)
+    end
+
+    self:rebuildVisibleList()
+end
+
+function ISBCWCraftItemFilterPanel:getFilterType()
+    return self.filterType or "Both"
+end
+
 function ISBCWCraftItemFilterPanel:onSearchTextChanged()
     self:rebuildVisibleList()
+end
+
+function ISBCWCraftItemFilterPanel:onTypeChanged(combo)
+    local selected = combo and combo.options[combo:getSelected()]
+    local filterType = selected and selected.data or "Both"
+
+    self.filterType = filterType
+
+    if self.callbackTarget and self.callbackTarget.onBCWCraftItemFilterTypeChanged then
+        self.callbackTarget:onBCWCraftItemFilterTypeChanged(filterType)
+    else
+        self:rebuildVisibleList()
+    end
+end
+
+function ISBCWCraftItemFilterPanel:entryMatchesType(entry)
+    local filterType = self:getFilterType()
+
+    if filterType == "Ingredient" then
+        return entry.isIngredient == true
+    end
+
+    if filterType == "Result" then
+        return entry.isResult == true
+    end
+
+    return entry.isIngredient == true or entry.isResult == true
 end
 
 function ISBCWCraftItemFilterPanel:rebuildVisibleList()
@@ -82,21 +143,32 @@ function ISBCWCraftItemFilterPanel:rebuildVisibleList()
     }
 
     local allItem = self.itemList:addItem("ALL", allEntry)
+    local selectedFound = not self.selectedFullName
+
     if not self.selectedFullName then
         self.itemList.selected = allItem.itemindex
     end
 
     for _, entry in ipairs(self.items) do
-        local displayName = entry.displayName or entry.fullName or "Unknown"
-        local haystack = string.lower(displayName .. " " .. (entry.fullName or ""))
+        if self:entryMatchesType(entry) then
+            local displayName = entry.displayName or entry.fullName or "Unknown"
+            local haystack = string.lower(displayName .. " " .. (entry.fullName or ""))
 
-        if search == "" or string.find(haystack, search, 1, true) then
-            local listItem = self.itemList:addItem(displayName, entry)
+            if search == "" or string.find(haystack, search, 1, true) then
+                local listItem = self.itemList:addItem(displayName, entry)
 
-            if self.selectedFullName and entry.fullName == self.selectedFullName then
-                self.itemList.selected = listItem.itemindex
+                if self.selectedFullName and entry.fullName == self.selectedFullName then
+                    self.itemList.selected = listItem.itemindex
+                    selectedFound = true
+                end
             end
         end
+    end
+
+    -- If the currently selected item isn't part of this type anymore,
+    -- visually fall back to ALL. The parent will also clear the recipe filter.
+    if not selectedFound then
+        self.itemList.selected = allItem.itemindex
     end
 
     self.itemList:setScrollHeight(#self.itemList.items * self.itemList.itemheight)
@@ -131,11 +203,19 @@ function ISBCWCraftItemFilterPanel:calculateLayout(preferredWidth, preferredHeig
         self.searchEntry:setX(0)
         self.searchEntry:setY(0)
         self.searchEntry:setWidth(width)
-        self.searchEntry:setHeight(SEARCH_HEIGHT)
+        self.searchEntry:setHeight(CONTROL_HEIGHT)
+    end
+
+    if self.typeCombo then
+        local comboY = CONTROL_HEIGHT + UI_BORDER_SPACING
+        self.typeCombo:setX(0)
+        self.typeCombo:setY(comboY)
+        self.typeCombo:setWidth(width)
+        self.typeCombo:setHeight(CONTROL_HEIGHT)
     end
 
     if self.itemList then
-        local listY = SEARCH_HEIGHT + UI_BORDER_SPACING
+        local listY = (CONTROL_HEIGHT * 2) + (UI_BORDER_SPACING * 2)
         self.itemList:setX(0)
         self.itemList:setY(listY)
         self.itemList:setWidth(width)
@@ -177,6 +257,7 @@ function ISBCWCraftItemFilterPanel:new(x, y, width, height, callbackTarget)
     o.callbackTarget = callbackTarget
     o.items = {}
     o.selectedFullName = nil
+    o.filterType = "Both"
     o.listBoxWidth = width or PANEL_WIDTH
     o.minimumWidth = o.listBoxWidth
     o.minimumHeight = 0

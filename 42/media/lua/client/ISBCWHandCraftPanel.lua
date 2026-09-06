@@ -108,6 +108,251 @@ function ISBCWHandCraftPanel:getBCWBaseRecipeList()
     return nil
 end
 
+local function addBCWItemEntry(byFullName, items, itemScript, isIngredient, isResult)
+    if not itemScript then
+        return
+    end
+
+    local fullName = itemScript:getFullName()
+    if not fullName or fullName == "" then
+        return
+    end
+
+    local entry = byFullName[fullName]
+
+    if not entry then
+        entry = {
+            fullName = fullName,
+            displayName = itemScript:getDisplayName() or fullName,
+            itemScript = itemScript,
+            isIngredient = false,
+            isResult = false
+        }
+
+        byFullName[fullName] = entry
+        table.insert(items, entry)
+    end
+
+    if isIngredient then
+        entry.isIngredient = true
+    end
+
+    if isResult then
+        entry.isResult = true
+    end
+end
+
+local function collectBCWRecipeInputs(recipe, byFullName, items)
+    local inputs = recipe:getInputs()
+    if not inputs then
+        return
+    end
+
+    for inputIndex = 0, inputs:size() - 1 do
+        local input = inputs:get(inputIndex)
+
+        if input
+            and not input:isAutomationOnly()
+            and input:getResourceType() == ResourceType.Item then
+
+            local possibleItems = input:getPossibleInputItems()
+
+            if possibleItems then
+                for itemIndex = 0, possibleItems:size() - 1 do
+                    addBCWItemEntry(
+                        byFullName,
+                        items,
+                        possibleItems:get(itemIndex),
+                        true,
+                        false
+                    )
+                end
+            end
+        end
+    end
+end
+
+local function collectBCWRecipeOutputs(recipe, byFullName, items)
+    local outputs = recipe:getOutputs()
+
+    if outputs then
+        for outputIndex = 0, outputs:size() - 1 do
+            local output = outputs:get(outputIndex)
+
+            if output
+                and not output:isAutomationOnly()
+                and output:getResourceType() == ResourceType.Item then
+
+                local possibleItems = output:getPossibleResultItems()
+
+                if possibleItems then
+                    for itemIndex = 0, possibleItems:size() - 1 do
+                        addBCWItemEntry(
+                            byFullName,
+                            items,
+                            possibleItems:get(itemIndex),
+                            false,
+                            true
+                        )
+                    end
+                end
+            end
+        end
+    end
+
+    -- Match the extra item outputs shown by vanilla's Results widget:
+    -- FakeOutput inputs can either create another item or return/keep
+    -- one of their possible input items.
+    local inputs = recipe:getInputs()
+
+    if inputs then
+        for inputIndex = 0, inputs:size() - 1 do
+            local input = inputs:get(inputIndex)
+
+            if input
+                and not input:isAutomationOnly()
+                and input:getResourceType() == ResourceType.Item
+                and input:hasFlag(InputFlag.FakeOutput) then
+
+                local createTo = input:getCreateToItemScript()
+
+                if createTo and createTo:getResourceType() == ResourceType.Item then
+                    local possibleItems = createTo:getPossibleResultItems()
+
+                    if possibleItems then
+                        for itemIndex = 0, possibleItems:size() - 1 do
+                            addBCWItemEntry(
+                                byFullName,
+                                items,
+                                possibleItems:get(itemIndex),
+                                false,
+                                true
+                            )
+                        end
+                    end
+                elseif input:isKeep() then
+                    local possibleItems = input:getPossibleInputItems()
+
+                    if possibleItems then
+                        for itemIndex = 0, possibleItems:size() - 1 do
+                            addBCWItemEntry(
+                                byFullName,
+                                items,
+                                possibleItems:get(itemIndex),
+                                false,
+                                true
+                            )
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function recipeHasBCWInput(recipe, fullName)
+    local inputs = recipe:getInputs()
+    if not inputs then
+        return false
+    end
+
+    for inputIndex = 0, inputs:size() - 1 do
+        local input = inputs:get(inputIndex)
+
+        if input
+            and not input:isAutomationOnly()
+            and input:getResourceType() == ResourceType.Item then
+
+            local possibleItems = input:getPossibleInputItems()
+
+            if possibleItems then
+                for itemIndex = 0, possibleItems:size() - 1 do
+                    local itemScript = possibleItems:get(itemIndex)
+
+                    if itemScript and itemScript:getFullName() == fullName then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+local function recipeHasBCWOutput(recipe, fullName)
+    local outputs = recipe:getOutputs()
+
+    if outputs then
+        for outputIndex = 0, outputs:size() - 1 do
+            local output = outputs:get(outputIndex)
+
+            if output
+                and not output:isAutomationOnly()
+                and output:getResourceType() == ResourceType.Item then
+
+                local possibleItems = output:getPossibleResultItems()
+
+                if possibleItems then
+                    for itemIndex = 0, possibleItems:size() - 1 do
+                        local itemScript = possibleItems:get(itemIndex)
+
+                        if itemScript and itemScript:getFullName() == fullName then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local inputs = recipe:getInputs()
+
+    if inputs then
+        for inputIndex = 0, inputs:size() - 1 do
+            local input = inputs:get(inputIndex)
+
+            if input
+                and not input:isAutomationOnly()
+                and input:getResourceType() == ResourceType.Item
+                and input:hasFlag(InputFlag.FakeOutput) then
+
+                local createTo = input:getCreateToItemScript()
+
+                if createTo and createTo:getResourceType() == ResourceType.Item then
+                    local possibleItems = createTo:getPossibleResultItems()
+
+                    if possibleItems then
+                        for itemIndex = 0, possibleItems:size() - 1 do
+                            local itemScript = possibleItems:get(itemIndex)
+
+                            if itemScript and itemScript:getFullName() == fullName then
+                                return true
+                            end
+                        end
+                    end
+                end
+
+                if not createTo and input:isKeep() then
+                    local possibleItems = input:getPossibleInputItems()
+
+                    if possibleItems then
+                        for itemIndex = 0, possibleItems:size() - 1 do
+                            local itemScript = possibleItems:get(itemIndex)
+
+                            if itemScript and itemScript:getFullName() == fullName then
+                                return true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return false
+end
+
 function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     if not self.bcwCraftItemFilterPanel then
         return
@@ -122,43 +367,8 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
             local recipe = recipes:get(recipeIndex)
 
             if recipe then
-                local inputs = recipe:getInputs()
-
-                if inputs then
-                    for inputIndex = 0, inputs:size() - 1 do
-                        local input = inputs:get(inputIndex)
-
-                        if input
-                            and not input:isAutomationOnly()
-                            and input:getResourceType() == ResourceType.Item then
-
-                            local possibleItems = input:getPossibleInputItems()
-
-                            if possibleItems then
-                                for itemIndex = 0, possibleItems:size() - 1 do
-                                    local itemScript = possibleItems:get(itemIndex)
-
-                                    if itemScript then
-                                        local fullName = itemScript:getFullName()
-
-                                        if fullName and fullName ~= "" and not byFullName[fullName] then
-                                            local displayName = itemScript:getDisplayName()
-
-                                            local entry = {
-                                                fullName = fullName,
-                                                displayName = displayName or fullName,
-                                                itemScript = itemScript
-                                            }
-
-                                            byFullName[fullName] = entry
-                                            table.insert(items, entry)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
+                collectBCWRecipeInputs(recipe, byFullName, items)
+                collectBCWRecipeOutputs(recipe, byFullName, items)
             end
         end
     end
@@ -176,21 +386,87 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
 
     self.bcwCraftItems = items
     self.bcwCraftItemFilterPanel:setItems(items)
+    self.bcwCraftItemFilterPanel:setFilterType(self.bcwCraftItemFilterType or "Both")
     self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
+end
+
+function ISBCWHandCraftPanel:applyBCWCraftItemRecipeFilter()
+    local fullName = self.bcwSelectedCraftItemFullName
+
+    if not fullName then
+        ISHandCraftPanel.refreshRecipeList(self, true)
+        self:filterRecipeList()
+        return
+    end
+
+    local filterType = self.bcwCraftItemFilterType or "Both"
+    local baseRecipes = self:getBCWBaseRecipeList()
+    local filteredRecipes = ArrayList.new()
+
+    if baseRecipes then
+        for recipeIndex = 0, baseRecipes:size() - 1 do
+            local recipe = baseRecipes:get(recipeIndex)
+
+            if recipe then
+                local matchesIngredient = false
+                local matchesResult = false
+
+                if filterType == "Both" or filterType == "Ingredient" then
+                    matchesIngredient = recipeHasBCWInput(recipe, fullName)
+                end
+
+                if filterType == "Both" or filterType == "Result" then
+                    matchesResult = recipeHasBCWOutput(recipe, fullName)
+                end
+
+                if matchesIngredient or matchesResult then
+                    filteredRecipes:add(recipe)
+                end
+            end
+        end
+    end
+
+    self.logic:setRecipes(filteredRecipes)
+    self:filterRecipeList()
 end
 
 function ISBCWHandCraftPanel:onBCWCraftItemFilterChanged(entry)
     if not entry or entry.isAll then
         self.bcwSelectedCraftItemFullName = nil
-        self:setRecipeFilter(nil, nil)
     else
         self.bcwSelectedCraftItemFullName = entry.fullName
-
-        -- Exact same recipe filter used by vanilla's inventory context action:
-        -- "Search recipes..." -> !Full.Item.Type + InputName.
-        self:setRecipeFilter("!" .. entry.fullName, "InputName")
     end
 
+    self:applyBCWCraftItemRecipeFilter()
+    self.logic:checkValidRecipeSelected()
+    self:onRecipeChanged(self.logic:getRecipe())
+end
+
+function ISBCWHandCraftPanel:onBCWCraftItemFilterTypeChanged(filterType)
+    self.bcwCraftItemFilterType = filterType or "Both"
+
+    local selectedEntry = nil
+    if self.bcwSelectedCraftItemFullName then
+        for _, entry in ipairs(self.bcwCraftItems or {}) do
+            if entry.fullName == self.bcwSelectedCraftItemFullName then
+                selectedEntry = entry
+                break
+            end
+        end
+    end
+
+    if selectedEntry then
+        local validForType = self.bcwCraftItemFilterType == "Both"
+            or (self.bcwCraftItemFilterType == "Ingredient" and selectedEntry.isIngredient)
+            or (self.bcwCraftItemFilterType == "Result" and selectedEntry.isResult)
+
+        if not validForType then
+            self.bcwSelectedCraftItemFullName = nil
+        end
+    end
+
+    self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
+    self:applyBCWCraftItemRecipeFilter()
     self.logic:checkValidRecipeSelected()
     self:onRecipeChanged(self.logic:getRecipe())
 end
@@ -213,6 +489,10 @@ end
 function ISBCWHandCraftPanel:refreshRecipeList(forceRefresh)
     ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
     self:rebuildBCWCraftItemList()
+
+    if self.bcwSelectedCraftItemFullName then
+        self:applyBCWCraftItemRecipeFilter()
+    end
 end
 
 function ISBCWHandCraftPanel:new(
@@ -241,6 +521,7 @@ function ISBCWHandCraftPanel:new(
     -- vanilla refreshRecipeList() already uses the right mode.
     o.seeAllRecipe = seeAllRecipe == true
     o.bcwSelectedCraftItemFullName = nil
+    o.bcwCraftItemFilterType = "Both"
     o.bcwCraftItems = {}
 
     return o
