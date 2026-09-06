@@ -114,8 +114,8 @@ function ISBCWRecipeFilterPanel:updateBCWButtons()
         end
 
         self.unknownRecipeButton.tooltip = showUnknown
-            and "Unknown recipes hidden. Click to show them."
-            or "Unknown recipes shown. Click to hide them."
+            and "Unknown recipes shown. Click to hide them."
+            or "Unknown recipes hidden. Click to show them."
     end
 
     if self.refreshButton then
