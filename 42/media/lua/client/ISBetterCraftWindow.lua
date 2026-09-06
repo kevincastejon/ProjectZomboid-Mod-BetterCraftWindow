@@ -9,6 +9,14 @@ ISBetterCraftWindow = ISCollapsableWindow:derive("ISBetterCraftWindow")
 ISBetterCraftWindow.instances = {}
 ISBetterCraftWindow.SCAN_RADIUS = 3
 ISBetterCraftWindow.SCAN_INTERVAL = 60
+ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN = true
+
+local function bcwNowMs()
+    if getTimestampMs then
+        return getTimestampMs()
+    end
+    return 0
+end
 ISBetterCraftWindow.TAB_HEIGHT = 28
 ISBetterCraftWindow.TAB_MARGIN = 6
 ISBetterCraftWindow.TAB_GAP = 4
@@ -63,6 +71,7 @@ local function findEntry(list, obj)
 end
 
 function ISBetterCraftWindow:scanWorkstations()
+    local _bcwScanStart = bcwNowMs()
     local result = {}
 
     if not self.player or not self.player:getSquare() then
@@ -72,18 +81,34 @@ function ISBetterCraftWindow:scanWorkstations()
     local sx = math.floor(self.player:getX())
     local sy = math.floor(self.player:getY())
     local sz = math.floor(self.player:getZ())
-    local playerSquare = self.player:getSquare()
     local radius = ISBetterCraftWindow.SCAN_RADIUS
 
     for x = sx - radius, sx + radius do
         for y = sy - radius, sy + radius do
             local square = getCell():getGridSquare(x, y, sz)
 
-            if square and playerSquare:canReachTo(square) then
+            -- Do not pre-filter workstation squares with canReachTo().
+            -- Multi-tile workstations may expose an interactable tile near the
+            -- player while the actual IsoObject carrying the CraftBench
+            -- component is anchored on another square that fails canReachTo().
+            --
+            -- For tab discovery BCW only needs to know that the CraftBench
+            -- exists nearby. Actual usability/ownership is handled later when
+            -- the workstation tab is selected.
+            if square then
                 local objects = square:getObjects()
 
-                if objects and objects:size() > 1 then
-                    for i = 1, objects:size() - 1 do
+                -- Unlike vanilla FindCraftSurface(), BCW is enumerating actual
+                -- workstation entities, not looking for a generic crafting
+                -- surface. Some CraftBench objects can legitimately be the
+                -- first (index 0) or the only object on their square.
+                --
+                -- Starting at index 1 made those workstations invisible to the
+                -- periodic scan. A direct world click could inject one into
+                -- the tab list, but the next scan would fail to rediscover it
+                -- and remove the tab again.
+                if objects and objects:size() > 0 then
+                    for i = 0, objects:size() - 1 do
                         local obj = objects:get(i)
                         local craftBench = getCraftBench(obj)
 
@@ -107,23 +132,31 @@ function ISBetterCraftWindow:scanWorkstations()
         end
         return a.name < b.name
     end)
-
-
-    local totals = {}
-    local counts = {}
-
     for _, entry in ipairs(result) do
-        totals[entry.name] = (totals[entry.name] or 0) + 1
+        entry.displayName = entry.name
     end
 
-    for _, entry in ipairs(result) do
-        local name = entry.name
-        counts[name] = (counts[name] or 0) + 1
+    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN then
+        local ps = self.player and self.player:getSquare()
+        print(string.format(
+            "[BCW SCAN] scan=%dms player=%d,%d,%d found=%d",
+            bcwNowMs() - _bcwScanStart,
+            ps and ps:getX() or -1,
+            ps and ps:getY() or -1,
+            ps and ps:getZ() or -1,
+            #result
+        ))
 
-        if totals[name] > 1 then
-            entry.displayName = name .. " (" .. tostring(counts[name]) .. ")"
-        else
-            entry.displayName = name
+        for _, entry in ipairs(result) do
+            local sq = entry.isoObject and entry.isoObject:getSquare()
+            print(string.format(
+                "[BCW SCAN]   + %s anchor=%d,%d,%d dist=%.2f",
+                tostring(entry.displayName or entry.name or "?"),
+                sq and sq:getX() or -1,
+                sq and sq:getY() or -1,
+                sq and sq:getZ() or -1,
+                tonumber(entry.distance) or -1
+            ))
         end
     end
 
@@ -407,14 +440,64 @@ function ISBetterCraftWindow:workstationListsDiffer(oldList, newList)
 end
 
 function ISBetterCraftWindow:refreshWorkstations(force)
+    local _bcwRefreshStart = bcwNowMs()
+    local oldList = self.workstations or {}
+
+    local _bcwBeforeScan = bcwNowMs()
     local newList = self:scanWorkstations()
-    local changed = force or self:workstationListsDiffer(self.workstations, newList)
+    local _bcwAfterScan = bcwNowMs()
+
+    local _bcwBeforeCompare = bcwNowMs()
+    local changed = force or self:workstationListsDiffer(oldList, newList)
+    local _bcwAfterCompare = bcwNowMs()
+
+    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN and changed then
+        for _, oldEntry in ipairs(oldList) do
+            if not findEntry(newList, oldEntry.isoObject) then
+                local sq = oldEntry.isoObject and oldEntry.isoObject:getSquare()
+                print(string.format(
+                    "[BCW SCAN] REMOVED %s anchor=%d,%d,%d",
+                    tostring(oldEntry.displayName or oldEntry.name or "?"),
+                    sq and sq:getX() or -1,
+                    sq and sq:getY() or -1,
+                    sq and sq:getZ() or -1
+                ))
+            end
+        end
+
+        for _, newEntry in ipairs(newList) do
+            if not findEntry(oldList, newEntry.isoObject) then
+                local sq = newEntry.isoObject and newEntry.isoObject:getSquare()
+                print(string.format(
+                    "[BCW SCAN] ADDED %s anchor=%d,%d,%d",
+                    tostring(newEntry.displayName or newEntry.name or "?"),
+                    sq and sq:getX() or -1,
+                    sq and sq:getY() or -1,
+                    sq and sq:getZ() or -1
+                ))
+            end
+        end
+    end
+
     self.workstations = newList
 
+    local _bcwBeforeTabs = bcwNowMs()
     if changed then
         self:rebuildTabs()
     else
         self:updateTabState()
+    end
+    local _bcwAfterTabs = bcwNowMs()
+
+    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN then
+        print(string.format(
+            "[BCW PERF] scan=%dms compare=%dms tabs+availability=%dms subtotal=%dms changed=%s",
+            _bcwAfterScan - _bcwBeforeScan,
+            _bcwAfterCompare - _bcwBeforeCompare,
+            _bcwAfterTabs - _bcwBeforeTabs,
+            bcwNowMs() - _bcwRefreshStart,
+            tostring(changed)
+        ))
     end
 
     if self.selectedWorkstation

@@ -1,3 +1,4 @@
+require "Entity/ISEntityUI"
 require "Entity/ISUI/CraftRecipe/ISHandCraftPanel"
 require "ISBCWCraftRecipePanel"
 require "ISBCWCraftItemFilterPanel"
@@ -8,8 +9,162 @@ ISBCWHandCraftPanel = ISHandCraftPanel:derive("ISBCWHandCraftPanel")
 
 local ITEM_FILTER_WIDTH = 185 * (getTextManager():getFontHeight(UIFont.Small) / 19)
 
--- Better Craft Window owns its category + item-filter area. Vanilla windows
--- are untouched because this override only exists on ISBCWHandCraftPanel.
+-- Temporary BCW diagnostics.
+-- The ALL tab has no CraftBench, so it inherits ISHandCraftPanel:update(),
+-- which may call ISEntityUI.FindCraftSurface(). Time both the vanilla helper
+-- itself and the complete inherited update so we can correlate UI hitches.
+local function bcwDiagNowMs()
+    if getTimestampMs then
+        return getTimestampMs()
+    end
+    return 0
+end
+
+if not _G.BCW_DIAG_FINDCRAFT_INSTALLED then
+    _G.BCW_DIAG_FINDCRAFT_INSTALLED = true
+    _G.BCW_DIAG_FINDCRAFT_ORIGINAL = ISEntityUI.FindCraftSurface
+    _G.BCW_DIAG_FINDCRAFT_CALLS = 0
+    _G.BCW_DIAG_FINDCRAFT_TOTAL = 0
+    _G.BCW_DIAG_FINDCRAFT_MAX = 0
+
+    ISEntityUI.FindCraftSurface = function(player, radius)
+        local t0 = bcwDiagNowMs()
+        local result = _G.BCW_DIAG_FINDCRAFT_ORIGINAL(player, radius)
+        local dt = bcwDiagNowMs() - t0
+
+        _G.BCW_DIAG_FINDCRAFT_CALLS = _G.BCW_DIAG_FINDCRAFT_CALLS + 1
+        _G.BCW_DIAG_FINDCRAFT_TOTAL = _G.BCW_DIAG_FINDCRAFT_TOTAL + dt
+        if dt > _G.BCW_DIAG_FINDCRAFT_MAX then
+            _G.BCW_DIAG_FINDCRAFT_MAX = dt
+        end
+
+        -- Log individual expensive calls, plus a periodic aggregate so that
+        -- cheap-but-very-frequent calls are visible without flooding console.
+        if dt >= 2 then
+            local sq = player and player:getSquare()
+            print(string.format(
+                "[BCW ALL PERF] FindCraftSurface radius=%s took=%dms player=%d,%d,%d",
+                tostring(radius),
+                dt,
+                sq and sq:getX() or -1,
+                sq and sq:getY() or -1,
+                sq and sq:getZ() or -1
+            ))
+        end
+
+        if (_G.BCW_DIAG_FINDCRAFT_CALLS % 120) == 0 then
+            print(string.format(
+                "[BCW ALL PERF] FindCraftSurface summary calls=%d total=%dms avg=%.3fms max=%dms",
+                _G.BCW_DIAG_FINDCRAFT_CALLS,
+                _G.BCW_DIAG_FINDCRAFT_TOTAL,
+                _G.BCW_DIAG_FINDCRAFT_TOTAL / _G.BCW_DIAG_FINDCRAFT_CALLS,
+                _G.BCW_DIAG_FINDCRAFT_MAX
+            ))
+        end
+
+        return result
+    end
+end
+
+function ISBCWHandCraftPanel:update()
+    local totalStart = bcwDiagNowMs()
+
+    local t0 = bcwDiagNowMs()
+    ISPanel.update(self)
+    local panelMs = bcwDiagNowMs() - t0
+
+    t0 = bcwDiagNowMs()
+    local crafting = self.logic:isCraftActionInProgress()
+    local craftCheckMs = bcwDiagNowMs() - t0
+
+    if crafting then
+        return
+    end
+
+    if self.updateTimer > 0 then
+        self.updateTimer = self.updateTimer - 1
+    end
+
+    local findSurfaceMs = 0
+    local setIsoMs = 0
+    local surfaceContainersMs = 0
+    local surfaceChanged = false
+
+    if not self.craftBench then
+        t0 = bcwDiagNowMs()
+        local newIsoObject = ISEntityUI.FindCraftSurface(self.player, 2)
+        findSurfaceMs = bcwDiagNowMs() - t0
+
+        if self.isoObject ~= newIsoObject then
+            surfaceChanged = true
+
+            t0 = bcwDiagNowMs()
+            self.isoObject = newIsoObject
+            self.parent.isoObject = self.isoObject
+            self.logic:setIsoObject(self.isoObject)
+            self.updateTimer = 0
+            setIsoMs = bcwDiagNowMs() - t0
+
+            t0 = bcwDiagNowMs()
+            self:updateContainers(true)
+            surfaceContainersMs = bcwDiagNowMs() - t0
+        end
+    end
+
+    local dirty = false
+    local refreshMs = 0
+    local autoPopulateMs = 0
+    local recipeCount = -1
+
+    if ISHandCraftPanel.drawDirty and self.updateTimer == 0 then
+        dirty = true
+        ISHandCraftPanel.drawDirty = false
+
+        t0 = bcwDiagNowMs()
+        self:refreshRecipeList()
+        refreshMs = bcwDiagNowMs() - t0
+
+        t0 = bcwDiagNowMs()
+        self.logic:autoPopulateInputs()
+        autoPopulateMs = bcwDiagNowMs() - t0
+
+        if self.recipesPanel
+            and self.recipesPanel.recipeListPanel
+            and self.recipesPanel.recipeListPanel.recipeListPanel
+            and self.recipesPanel.recipeListPanel.recipeListPanel.items then
+            recipeCount = #self.recipesPanel.recipeListPanel.recipeListPanel.items
+        end
+
+        if recipeCount >= 0 and recipeCount < 100 then
+            self.updateTimer = 1
+        else
+            self.updateTimer = 10
+        end
+    end
+
+    local totalMs = bcwDiagNowMs() - totalStart
+
+    if totalMs >= 4 or dirty or surfaceChanged then
+        print(string.format(
+            "[BCW UPDATE DETAIL] total=%dms panel=%d craftCheck=%d findSurface=%d surfaceChanged=%s setIso=%d surfaceContainers=%d dirty=%s refresh=%d autoPopulate=%d recipes=%d timer=%d craftBench=%s isoObject=%s",
+            totalMs,
+            panelMs,
+            craftCheckMs,
+            findSurfaceMs,
+            tostring(surfaceChanged),
+            setIsoMs,
+            surfaceContainersMs,
+            tostring(dirty),
+            refreshMs,
+            autoPopulateMs,
+            recipeCount,
+            tonumber(self.updateTimer) or -1,
+            tostring(self.craftBench ~= nil),
+            tostring(self.isoObject ~= nil)
+        ))
+    end
+end
+
 function ISBCWHandCraftPanel:createRecipeCategoryColumn()
     self.recipeCategories = ISXuiSkin.build(
         self.xuiSkin,
@@ -118,21 +273,58 @@ end
 -- Build the category list from the unfiltered context instead, exactly as if
 -- no BCW item were selected.
 function ISBCWHandCraftPanel:getCategoryList()
+    local totalStart = bcwDiagNowMs()
+
+    local t0 = bcwDiagNowMs()
     local recipes = self:getBCWBaseRecipeList()
+    local baseListMs = bcwDiagNowMs() - t0
 
     if not recipes then
-        return self.logic:getCategoryList()
+        t0 = bcwDiagNowMs()
+        local result = self.logic:getCategoryList()
+        local logicCategoriesMs = bcwDiagNowMs() - t0
+        local totalMs = bcwDiagNowMs() - totalStart
+
+        if totalMs >= 2 then
+            print(string.format(
+                "[BCW CATEGORY DETAIL] total=%dms baseList=%d logicCategories=%d customLogic=false",
+                totalMs,
+                baseListMs,
+                logicCategoriesMs
+            ))
+        end
+        return result
     end
 
+    t0 = bcwDiagNowMs()
     local categoryLogic = HandcraftLogic.new(
         self.player,
         self.craftBench,
         self.isoObject
     )
+    local newLogicMs = bcwDiagNowMs() - t0
 
+    t0 = bcwDiagNowMs()
     categoryLogic:setRecipes(recipes)
+    local setRecipesMs = bcwDiagNowMs() - t0
 
-    return categoryLogic:getCategoryList()
+    t0 = bcwDiagNowMs()
+    local result = categoryLogic:getCategoryList()
+    local getCategoriesMs = bcwDiagNowMs() - t0
+
+    local totalMs = bcwDiagNowMs() - totalStart
+    if totalMs >= 2 then
+        print(string.format(
+            "[BCW CATEGORY DETAIL] total=%dms baseList=%d newLogic=%d setRecipes=%d getCategories=%d customLogic=true",
+            totalMs,
+            baseListMs,
+            newLogicMs,
+            setRecipesMs,
+            getCategoriesMs
+        ))
+    end
+
+    return result
 end
 
 local function addBCWItemEntry(byFullName, items, itemScript, isIngredient, isResult)
@@ -465,9 +657,34 @@ local function isBCWRecipeKnown(player, recipe)
     return player:isRecipeKnown(recipe, true)
 end
 
-function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
+function ISBCWHandCraftPanel:rebuildBCWCraftItemList(forceRebuild)
     if not self.bcwCraftItemFilterPanel then
-        return
+        return false
+    end
+
+    -- The item universe depends on the recipe CONTEXT, not on inventory
+    -- availability. Vanilla can mark the hand-craft panel dirty very often
+    -- while nothing about this universe has changed. On the ALL tab that
+    -- previously meant rescanning ~1000 recipes every dirty refresh.
+    --
+    -- Keep a tiny context signature and reuse the already-built item list
+    -- until the recipe scope actually changes. Favorites are deliberately
+    -- excluded from this optimization because their membership can change
+    -- without the category string changing.
+    local category = self._categoryString or ""
+    local canReuse = not forceRebuild
+        and category ~= "*"
+        and self.bcwCraftItemListBuilt == true
+        and self.bcwCraftItemListSeeAll == (self.seeAllRecipe == true)
+        and self.bcwCraftItemListCraftBench == self.craftBench
+        and self.bcwCraftItemListRecipeQuery == self.recipeQuery
+        and self.bcwCraftItemListCategory == category
+
+    if canReuse then
+        -- The data and visible item list are already valid for this recipe
+        -- context. Do not call setItems() here: that method rebuilds the
+        -- entire scrolling UI list and was still costing ~50-60 ms on ALL.
+        return false
     end
 
     -- Important: the item list follows the selected VANILLA category.
@@ -519,6 +736,14 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     self.bcwCraftItemFilterPanel:setItems(items)
     self.bcwCraftItemFilterPanel:setFilterType(self.bcwCraftItemFilterType or "Both")
     self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
+
+    self.bcwCraftItemListBuilt = true
+    self.bcwCraftItemListSeeAll = self.seeAllRecipe == true
+    self.bcwCraftItemListCraftBench = self.craftBench
+    self.bcwCraftItemListRecipeQuery = self.recipeQuery
+    self.bcwCraftItemListCategory = category
+
+    return true
 end
 
 function ISBCWHandCraftPanel:recipePassesBCWVisibilityFilters(recipe)
@@ -636,11 +861,37 @@ function ISBCWHandCraftPanel:filterRecipeList()
 end
 
 function ISBCWHandCraftPanel:refreshRecipeList(forceRefresh)
-    ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
-    self:rebuildBCWCraftItemList()
+    local totalStart = bcwDiagNowMs()
 
-    if self.bcwSelectedCraftItemFullName or self.bcwShowUnknownRecipes then
+    local t0 = bcwDiagNowMs()
+    ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
+    local vanillaRefreshMs = bcwDiagNowMs() - t0
+
+    t0 = bcwDiagNowMs()
+    local itemListRebuilt = self:rebuildBCWCraftItemList()
+    local rebuildItemsMs = bcwDiagNowMs() - t0
+
+    local applyFilterMs = 0
+    local appliedFilter = self.bcwSelectedCraftItemFullName ~= nil or self.bcwShowUnknownRecipes == true
+    if appliedFilter then
+        t0 = bcwDiagNowMs()
         self:applyBCWCraftItemRecipeFilter()
+        applyFilterMs = bcwDiagNowMs() - t0
+    end
+
+    local totalMs = bcwDiagNowMs() - totalStart
+    if totalMs >= 2 then
+        print(string.format(
+            "[BCW REFRESH DETAIL] total=%dms vanillaRefresh=%d rebuildItemList=%d rebuilt=%s applyFilter=%d appliedFilter=%s seeAll=%s craftBench=%s",
+            totalMs,
+            vanillaRefreshMs,
+            rebuildItemsMs,
+            tostring(itemListRebuilt == true),
+            applyFilterMs,
+            tostring(appliedFilter),
+            tostring(self.seeAllRecipe == true),
+            tostring(self.craftBench ~= nil)
+        ))
     end
 end
 
@@ -714,6 +965,13 @@ function ISBCWHandCraftPanel:new(
     o.bcwSelectedCraftItemFullName = nil
     o.bcwCraftItemFilterType = "Both"
     o.bcwCraftItems = {}
+
+    -- Cached signature for the expensive item-universe reconstruction.
+    o.bcwCraftItemListBuilt = false
+    o.bcwCraftItemListSeeAll = nil
+    o.bcwCraftItemListCraftBench = nil
+    o.bcwCraftItemListRecipeQuery = nil
+    o.bcwCraftItemListCategory = nil
     o.bcwShowUnknownRecipes = false
 
     return o
