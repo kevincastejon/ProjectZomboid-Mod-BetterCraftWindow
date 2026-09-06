@@ -13,17 +13,11 @@ local LIST_SUBICON_SPACING = 2 * ICON_SCALE
 local SUBCATEGORY_INDENT = LIST_ICON_SIZE
 local XP_TEXT_GAP = 2 * ICON_SCALE
 local XP_ROW_GAP = 2 * ICON_SCALE
-local XP_MAX_DISPLAY = 2
 
 ISBCWRecipeScrollingListBox = ISRecipeScrollingListBox:derive("ISBCWRecipeScrollingListBox")
 
 function ISBCWRecipeScrollingListBox:getBCWDisplayedAwards(craftRecipe)
-    local awards = BCWXpUtils.getAwards(self.player, craftRecipe)
-    local result = {}
-    for i = 1, math.min(#awards, XP_MAX_DISPLAY) do
-        result[#result + 1] = awards[i]
-    end
-    return result
+    return BCWXpUtils.getAwards(self.player, craftRecipe)
 end
 
 function ISBCWRecipeScrollingListBox:getBCWXPColumnWidth(craftRecipe)
