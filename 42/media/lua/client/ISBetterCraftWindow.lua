@@ -504,69 +504,170 @@ local function syncResizeWidgets(window)
     end
 end
 
-function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
-    local width = math.max(self.minimumWidth, preferredWidth or self.width)
-    local height = math.max(self.minimumHeight, preferredHeight or self.height)
+local function installStableResizeDrag(widget)
+    if not widget then
+        return
+    end
 
-    -- First use the requested outer size so tab wrapping is calculated for
-    -- the width the player is trying to use.
+    -- ISResizeWidget's vanilla delta is expressed in the widget's local
+    -- coordinates. That works for vanilla windows because the resize handle
+    -- moves with the border while dragging. BCW has a dynamic XUI layout that
+    -- can move/clamp the border independently, which made the local delta get
+    -- applied more than once and caused resize amplification.
+    --
+    -- Use screen-space mouse coordinates and the window size captured at the
+    -- beginning of the drag instead. The requested size is therefore always:
+    --     initialSize + totalMouseDisplacement
+    -- and can never accumulate from frame to frame.
+    widget.onMouseDown = function(self, x, y)
+        if not self:getIsVisible() then
+            return
+        end
+
+        self.bcwStartMouseX = getMouseX()
+        self.bcwStartMouseY = getMouseY()
+        self.bcwStartWidth = self.target:getWidth()
+        self.bcwStartHeight = self.target:getHeight()
+
+        self.resizing = true
+        self:setCapture(true)
+        return true
+    end
+
+    local function resizeFromScreenMouse(self)
+        if not self.resizing then
+            return
+        end
+
+        local dx = getMouseX() - self.bcwStartMouseX
+        local dy = getMouseY() - self.bcwStartMouseY
+
+        local width = self.bcwStartWidth
+        if not self.yonly then
+            width = width + dx
+        end
+
+        local height = self.bcwStartHeight + dy
+
+        -- Keep the bottom edge on-screen, matching vanilla ISResizeWidget.
+        local maxScreenHeight = getCore():getScreenHeight() - self.target:getY()
+        height = math.min(height, maxScreenHeight)
+
+        self.target:calculateLayout(width, height)
+    end
+
+    widget.onMouseMove = function(self, dx, dy)
+        self.mouseOver = true
+        resizeFromScreenMouse(self)
+    end
+
+    widget.onMouseMoveOutside = function(self, dx, dy)
+        self.mouseOver = false
+        resizeFromScreenMouse(self)
+    end
+
+    local function finishResize(self)
+        if not self:getIsVisible() then
+            return
+        end
+
+        self.resizing = false
+        self:setCapture(false)
+        syncResizeWidgets(self.target)
+        return true
+    end
+
+    widget.onMouseUp = finishResize
+    widget.onMouseUpOutside = finishResize
+end
+
+function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
+    local requestedWidth = preferredWidth or self.width
+    local requestedHeight = preferredHeight or self.height
+
+    -- The bottom resize bar is Y-only. While it owns mouse capture, the
+    -- window width must remain absolutely stable. If calculateLayout changes
+    -- the width during that drag, the anchored ISResizeWidget2 changes its
+    -- local coordinate system and the next dy becomes incorrect.
+    local verticalResize = self.resizeWidget2 and self.resizeWidget2.resizing
+    if verticalResize then
+        requestedWidth = self.width
+    end
+
+    local width = math.max(self.minimumWidth, requestedWidth)
+    local height = math.max(self.minimumHeight, requestedHeight)
+
+    if self.maximumWidth and self.maximumWidth > 0 then
+        width = math.min(width, self.maximumWidth)
+    end
+    if self.maximumHeight and self.maximumHeight > 0 then
+        height = math.min(height, self.maximumHeight)
+    end
+
+    local resizeHeight = self.resizable and self:resizeWidgetHeight() or 0
+
+    if self.handCraftPanel then
+        -- Match vanilla ISHandcraftWindow: first ask the child for its
+        -- intrinsic minimum size without constraining it to the current
+        -- height. This makes the horizontal minimum independent from vertical
+        -- resizing (manual ingredient panel included).
+        self.handCraftPanel:calculateLayout(0, 0)
+        width = math.max(width, self.handCraftPanel:getWidth())
+    end
+
+    -- Never let a Y-only drag alter the outer width. Any genuine width-growth
+    -- request (for example opening the vanilla manual ingredient panel) is
+    -- handled by xuiRecalculateLayout outside of an active vertical drag.
+    if verticalResize then
+        width = self.width
+    end
+
     self:setWidth(width)
     self:setHeight(height)
 
     local contentY = self:layoutTabs()
-    local resizeHeight = self.resizable and self:resizeWidgetHeight() or 0
 
     if self.handCraftPanel then
         self.handCraftPanel:setX(0)
         self.handCraftPanel:setY(contentY)
-
-        -- The hand-craft panel is allowed to overrule the requested width.
-        -- This is important when vanilla shows the manual ingredient panel:
-        -- rootTable then needs another whole column. ISHandCraftPanel already
-        -- reports that requirement by becoming wider than the preferred width.
         self.handCraftPanel:calculateLayout(
             width,
             math.max(0, height - contentY - resizeHeight)
         )
 
-        local requiredWidth = self.handCraftPanel:getWidth()
-        local requiredHeight = self.handCraftPanel:getHeight() + contentY + resizeHeight
+        -- Height may legitimately be forced upward by the child. Width is
+        -- only allowed to grow here when this is not a Y-only mouse drag.
+        if not verticalResize then
+            width = math.max(width, self.handCraftPanel:getWidth())
+        end
 
-        width = math.max(width, requiredWidth)
-        height = math.max(height, requiredHeight)
+        height = math.max(
+            height,
+            self.handCraftPanel:getHeight() + contentY + resizeHeight
+        )
 
-        -- If the child forced the window wider, run one final pass using the
-        -- actual width. This keeps percentage/fill columns and the vanilla
-        -- ingredient panel responsive instead of leaving them laid out for
-        -- the too-small requested size.
-        if width ~= self:getWidth() or height ~= self:getHeight() then
-            self:setWidth(width)
-            self:setHeight(height)
+        self:setWidth(width)
+        self:setHeight(height)
 
+        -- If width grew in the final child pass, recalculate once with the
+        -- actual outer width so fill columns receive the correct geometry.
+        if not verticalResize and self.handCraftPanel:getWidth() < width then
             contentY = self:layoutTabs()
-
             self.handCraftPanel:setX(0)
             self.handCraftPanel:setY(contentY)
             self.handCraftPanel:calculateLayout(
                 width,
                 math.max(0, height - contentY - resizeHeight)
             )
-
-            -- One last guard in case the second pass reveals a slightly larger
-            -- minimum due to changed tab wrapping or XUI column calculation.
-            width = math.max(width, self.handCraftPanel:getWidth())
             height = math.max(
                 height,
                 self.handCraftPanel:getHeight() + contentY + resizeHeight
             )
-
-            self:setWidth(width)
             self:setHeight(height)
         end
     end
 
     syncResizeWidgets(self)
-
     self.dirtyLayout = false
 end
 
@@ -585,16 +686,11 @@ end
 function ISBetterCraftWindow:createChildren()
     ISCollapsableWindow.createChildren(self)
 
-    -- Vanilla ISEntityWindow uses a custom resizeFunction for the same
-    -- reason: resizing a layout-heavy window through setWidth()/setHeight()
-    -- makes anchored children interfere with the drag calculation.
-    -- Feed the requested mouse size straight into our layout in one pass.
-    if self.resizeWidget then
-        self.resizeWidget.resizeFunction = ISBetterCraftWindow.calculateLayout
-    end
-    if self.resizeWidget2 then
-        self.resizeWidget2.resizeFunction = ISBetterCraftWindow.calculateLayout
-    end
+    -- BCW uses a screen-space drag baseline instead of ISResizeWidget's
+    -- local-coordinate delta. This keeps resizing strictly 1:1 with the mouse
+    -- even when the XUI layout reaches a minimum size or changes internally.
+    installStableResizeDrag(self.resizeWidget)
+    installStableResizeDrag(self.resizeWidget2)
 
     self.tabButtons = {}
     self.workstations = self:scanWorkstations()
