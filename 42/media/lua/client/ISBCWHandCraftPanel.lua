@@ -2,6 +2,7 @@ require "Entity/ISUI/CraftRecipe/ISHandCraftPanel"
 require "ISBCWCraftRecipePanel"
 require "ISBCWCraftItemFilterPanel"
 require "ISBCWRecipeCategories"
+require "ISBCWWidgetRecipesPanel"
 
 ISBCWHandCraftPanel = ISHandCraftPanel:derive("ISBCWHandCraftPanel")
 
@@ -49,7 +50,7 @@ function ISBCWHandCraftPanel:createRecipesColumn()
     self.recipesPanel = ISXuiSkin.build(
         self.xuiSkin,
         "S_NeedsAStyle",
-        ISWidgetRecipesPanel,
+        ISBCWWidgetRecipesPanel,
         0, 0, 10, 10,
         self.player,
         self.craftBench,
