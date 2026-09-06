@@ -22,6 +22,55 @@ function ISBCWRecipeFilterPanel:createChildren()
     self.unknownRecipeButton.enable = true
     self.unknownRecipeButton:initialise()
     self.unknownRecipeButton:instantiate()
+
+    -- BCW-only toggle state overlay. The vanilla book texture remains the
+    -- primary icon; when the filter is active we draw a small green check
+    -- in the bottom-right corner so the state is unambiguous.
+    self.unknownRecipeButton.prerender = function(button)
+        ISButton.prerender(button)
+
+        if button.bcwToggleActive then
+            local size = math.max(8, math.floor(button:getHeight() * 0.38))
+            local x = button:getWidth() - size - 2
+            local y = button:getHeight() - size - 2
+
+            local good = getCore():getGoodHighlitedColor()
+
+            button:drawRect(
+                x,
+                y,
+                size,
+                size,
+                0.95,
+                0.05,
+                0.05,
+                0.05
+            )
+
+            button:drawRectBorder(
+                x,
+                y,
+                size,
+                size,
+                1.0,
+                good:getR(),
+                good:getG(),
+                good:getB()
+            )
+
+            button:drawTextCentre(
+                "✓",
+                x + (size / 2),
+                y - 1,
+                good:getR(),
+                good:getG(),
+                good:getB(),
+                1.0,
+                UIFont.Small
+            )
+        end
+    end
+
     self:addChild(self.unknownRecipeButton)
 
     self.refreshButton = ISXuiSkin.build(
@@ -46,8 +95,24 @@ function ISBCWRecipeFilterPanel:updateBCWButtons()
     local hideUnknown = self.callbackTarget and self.callbackTarget.bcwHideUnknownRecipes == true
 
     if self.unknownRecipeButton then
-        self.unknownRecipeButton.backgroundColor.a = hideUnknown and 0.85 or 0.35
-        self.unknownRecipeButton.borderColor.a = hideUnknown and 1.0 or 0.5
+        self.unknownRecipeButton.bcwToggleActive = hideUnknown
+
+        local good = getCore():getGoodHighlitedColor()
+
+        if hideUnknown then
+            self.unknownRecipeButton.backgroundColor.a = 0.85
+            self.unknownRecipeButton.borderColor.a = 1.0
+            self.unknownRecipeButton.borderColor.r = good:getR()
+            self.unknownRecipeButton.borderColor.g = good:getG()
+            self.unknownRecipeButton.borderColor.b = good:getB()
+        else
+            self.unknownRecipeButton.backgroundColor.a = 0.35
+            self.unknownRecipeButton.borderColor.a = 0.5
+            self.unknownRecipeButton.borderColor.r = 1.0
+            self.unknownRecipeButton.borderColor.g = 1.0
+            self.unknownRecipeButton.borderColor.b = 1.0
+        end
+
         self.unknownRecipeButton.tooltip = hideUnknown
             and "Unknown recipes hidden. Click to show them."
             or "Unknown recipes shown. Click to hide them."
