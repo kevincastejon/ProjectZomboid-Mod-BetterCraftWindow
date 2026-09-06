@@ -416,9 +416,17 @@ function ISBetterCraftWindow:xuiRecalculateLayout(_preferredWidth, _preferredHei
 
         if _preferredWidth then
             if _preferredWidth < 0 then
-                self.xuiPreferredResizeWidth = self.width + _preferredWidth
+                -- A negative XUI width request is emitted when the vanilla
+                -- manual ingredient column closes. Vanilla uses that to shrink
+                -- its own outer window, but BCW should keep the user's chosen
+                -- window size and simply let the remaining columns reclaim the
+                -- freed space.
+                self.xuiPreferredResizeWidth = self.width
             else
-                self.xuiPreferredResizeWidth = _preferredWidth
+                -- Positive requests are still honoured. This is what lets the
+                -- manual ingredient column grow the window when there isn't
+                -- enough room to display it without clipping.
+                self.xuiPreferredResizeWidth = math.max(self.width, _preferredWidth)
             end
         end
 
@@ -434,10 +442,74 @@ function ISBetterCraftWindow:xuiRecalculateLayout(_preferredWidth, _preferredHei
     end
 end
 
+local function syncResizeWidgets(window)
+    if not window or not window.resizable then
+        return
+    end
+
+    -- CRITICAL: never move a resize widget while it owns mouse capture.
+    -- ISResizeWidget computes the drag delta from its own local mouse
+    -- coordinates (getMouseX/getMouseY - downX/downY). Moving the widget
+    -- during the drag changes that coordinate system and amplifies/reverses
+    -- the delta, which is what made BCW resize jump wildly.
+    --
+    -- We only resync the hitboxes after the drag has ended. This still fixes
+    -- the old minimum-size issue, where a clamped child-driven layout could
+    -- leave the hitbox one frame away from the rendered bottom edge.
+    if (window.resizeWidget and window.resizeWidget.resizing)
+    or (window.resizeWidget2 and window.resizeWidget2.resizing) then
+        return
+    end
+
+    local rh = window:resizeWidgetHeight()
+
+    if window.resizeWidget then
+        local x = window.width - rh
+        local y = window.height - rh
+
+        if window.resizeWidget:getX() ~= x then
+            window.resizeWidget:setX(x)
+        end
+        if window.resizeWidget:getY() ~= y then
+            window.resizeWidget:setY(y)
+        end
+        if window.resizeWidget:getWidth() ~= rh then
+            window.resizeWidget:setWidth(rh)
+        end
+        if window.resizeWidget:getHeight() ~= rh then
+            window.resizeWidget:setHeight(rh)
+        end
+
+        window.resizeWidget:bringToTop()
+    end
+
+    if window.resizeWidget2 then
+        local width = math.max(0, window.width - rh)
+        local y = window.height - rh
+
+        if window.resizeWidget2:getX() ~= 0 then
+            window.resizeWidget2:setX(0)
+        end
+        if window.resizeWidget2:getY() ~= y then
+            window.resizeWidget2:setY(y)
+        end
+        if window.resizeWidget2:getWidth() ~= width then
+            window.resizeWidget2:setWidth(width)
+        end
+        if window.resizeWidget2:getHeight() ~= rh then
+            window.resizeWidget2:setHeight(rh)
+        end
+
+        window.resizeWidget2:bringToTop()
+    end
+end
+
 function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
     local width = math.max(self.minimumWidth, preferredWidth or self.width)
     local height = math.max(self.minimumHeight, preferredHeight or self.height)
 
+    -- First use the requested outer size so tab wrapping is calculated for
+    -- the width the player is trying to use.
     self:setWidth(width)
     self:setHeight(height)
 
@@ -447,11 +519,53 @@ function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
     if self.handCraftPanel then
         self.handCraftPanel:setX(0)
         self.handCraftPanel:setY(contentY)
+
+        -- The hand-craft panel is allowed to overrule the requested width.
+        -- This is important when vanilla shows the manual ingredient panel:
+        -- rootTable then needs another whole column. ISHandCraftPanel already
+        -- reports that requirement by becoming wider than the preferred width.
         self.handCraftPanel:calculateLayout(
             width,
             math.max(0, height - contentY - resizeHeight)
         )
+
+        local requiredWidth = self.handCraftPanel:getWidth()
+        local requiredHeight = self.handCraftPanel:getHeight() + contentY + resizeHeight
+
+        width = math.max(width, requiredWidth)
+        height = math.max(height, requiredHeight)
+
+        -- If the child forced the window wider, run one final pass using the
+        -- actual width. This keeps percentage/fill columns and the vanilla
+        -- ingredient panel responsive instead of leaving them laid out for
+        -- the too-small requested size.
+        if width ~= self:getWidth() or height ~= self:getHeight() then
+            self:setWidth(width)
+            self:setHeight(height)
+
+            contentY = self:layoutTabs()
+
+            self.handCraftPanel:setX(0)
+            self.handCraftPanel:setY(contentY)
+            self.handCraftPanel:calculateLayout(
+                width,
+                math.max(0, height - contentY - resizeHeight)
+            )
+
+            -- One last guard in case the second pass reveals a slightly larger
+            -- minimum due to changed tab wrapping or XUI column calculation.
+            width = math.max(width, self.handCraftPanel:getWidth())
+            height = math.max(
+                height,
+                self.handCraftPanel:getHeight() + contentY + resizeHeight
+            )
+
+            self:setWidth(width)
+            self:setHeight(height)
+        end
     end
+
+    syncResizeWidgets(self)
 
     self.dirtyLayout = false
 end
@@ -534,6 +648,11 @@ function ISBetterCraftWindow:prerender()
         self.xuiPreferredResizeWidth = self.width
         self.xuiPreferredResizeHeight = self.height
     end
+
+    -- If a drag just ended, put the resize hitboxes back on the actual
+    -- rendered border. During the drag syncResizeWidgets() intentionally
+    -- does nothing so the mouse delta remains stable.
+    syncResizeWidgets(self)
 
     ISCollapsableWindow.prerender(self)
 end
