@@ -480,7 +480,10 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
         for recipeIndex = 0, recipes:size() - 1 do
             local recipe = recipes:get(recipeIndex)
 
-            if recipe and (not self.bcwHideUnknownRecipes or isBCWRecipeKnown(self.player, recipe)) then
+            if recipe then
+                -- The Unknown Recipes toggle only filters the recipe list.
+                -- BCW's custom item list is always built from the complete
+                -- selected-category recipe scope, including unknown recipes.
                 collectBCWRecipeInputs(recipe, byFullName, items)
                 collectBCWRecipeOutputs(recipe, byFullName, items)
             end
@@ -644,7 +647,8 @@ end
 function ISBCWHandCraftPanel:toggleBCWHideUnknownRecipes()
     self.bcwHideUnknownRecipes = not self.bcwHideUnknownRecipes
 
-    self:rebuildBCWCraftItemList()
+    -- Do not rebuild/filter BCW's item list here: this toggle is strictly
+    -- a recipe-visibility filter.
     self:applyBCWCraftItemRecipeFilter()
     self.logic:checkValidRecipeSelected()
     self:onRecipeChanged(self.logic:getRecipe())
