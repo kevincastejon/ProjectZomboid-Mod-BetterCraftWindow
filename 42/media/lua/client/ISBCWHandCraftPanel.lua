@@ -1,6 +1,7 @@
 require "Entity/ISUI/CraftRecipe/ISHandCraftPanel"
 require "ISBCWCraftRecipePanel"
 require "ISBCWCraftItemFilterPanel"
+require "ISBCWRecipeCategories"
 
 ISBCWHandCraftPanel = ISHandCraftPanel:derive("ISBCWHandCraftPanel")
 
@@ -12,7 +13,7 @@ function ISBCWHandCraftPanel:createRecipeCategoryColumn()
     self.recipeCategories = ISXuiSkin.build(
         self.xuiSkin,
         "S_NeedsAStyle",
-        ISWidgetRecipeCategories,
+        ISBCWRecipeCategories,
         0, 0, 10, 10
     )
     self.recipeCategories.autoWidth = true

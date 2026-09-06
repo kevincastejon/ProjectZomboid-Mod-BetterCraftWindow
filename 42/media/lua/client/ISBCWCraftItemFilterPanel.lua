@@ -198,7 +198,14 @@ function ISBCWCraftItemFilterPanel:onItemSelected(entry)
 end
 
 function ISBCWCraftItemFilterPanel:calculateLayout(preferredWidth, preferredHeight)
+    -- listBoxWidth is the desired *text/content* width. Reserve separate room
+    -- for the vertical scrollbar so it never eats the last characters.
     local width = self.listBoxWidth or PANEL_WIDTH
+
+    if self.itemList and self.itemList.vscroll then
+        width = width + self.itemList.vscroll:getWidth() + (6 * FONT_SCALE)
+    end
+
     local height = math.max(0, preferredHeight or self.height or 0)
 
     self:setWidth(width)
