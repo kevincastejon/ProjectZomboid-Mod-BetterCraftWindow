@@ -2,77 +2,236 @@ require "Entity/ISUI/CraftRecipe/ISCraftRecipePanel"
 require "ISWidgetRecipeXP"
 
 
-local vanillaCreateDynamicChildren =
-    ISCraftRecipePanel.createDynamicChildren
-
-
 function ISCraftRecipePanel:createDynamicChildren()
 
-    --
-    -- On laisse d'abord vanilla construire toute la fenêtre.
-    --
-    vanillaCreateDynamicChildren(self)
+    self.rootTable:clearTable()
 
-    if not self.rootTable then
-        return
-    end
-
-    local recipe = self.logic and self.logic:getRecipe()
+    local recipe = self.logic:getRecipe()
 
     if not recipe then
+        self:xuiRecalculateLayout()
         return
     end
 
-    local xpCount = recipe:getXPAwardCount()
 
-    --
-    -- Pas d'XP déclarée = pas de section.
-    --
-    if not xpCount or xpCount <= 0 then
-        return
-    end
+    self.rootTable:addColumnFill(nil)
 
-    --
-    -- Crée notre widget.
-    --
-    self.bcwXPWidget = ISWidgetRecipeXP:new(
-        0,
-        0,
-        10,
-        10,
-        self.player,
-        self.logic
-    )
+    local row
 
-    self.bcwXPWidget:initialise()
-    self.bcwXPWidget:instantiate()
 
-    --
-    -- IMPORTANT :
-    --
-    -- vanilla a déjà construit son tableau dans cet ordre :
-    --
-    -- Title
-    -- filler
-    -- Inputs
-    -- Outputs
-    -- filler
-    -- CraftControl
-    --
-    -- À ce stade addRow() ajouterait l'XP tout en bas,
-    -- après le bouton de craft.
-    --
-    -- Donc cette première version est volontairement simple :
-    -- elle ajoute la section XP au tableau et on valide d'abord
-    -- son comportement / API sur ta 42.20.4.
-    --
-    local row = self.rootTable:addRow()
+    -- =========================================================
+    -- TITLE
+    -- =========================================================
+
+    local favString =
+        BaseCraftingLogic.getFavouriteModDataString(recipe)
+
+    local isFavourite =
+        self.player:getModData()[favString] or false
+
+
+    self.titleWidget =
+        ISXuiSkin.build(
+            self.xuiSkin,
+            "S_WidgetTitleHeader_Std",
+            ISWidgetTitleHeader,
+            0,
+            0,
+            10,
+            10,
+            recipe,
+            self.player,
+            self.logic,
+            isFavourite
+        )
+
+    self.titleWidget:initialise()
+    self.titleWidget:instantiate()
+
+
+    row = self.rootTable:addRow()
 
     self.rootTable:setElement(
         0,
         row:index(),
-        self.bcwXPWidget
+        self.titleWidget
     )
+
+
+    -- =========================================================
+    -- FILLER
+    -- =========================================================
+
+    self.rootTable:addRowFill(nil)
+
+
+    -- =========================================================
+    -- INPUTS
+    -- =========================================================
+
+    self.inputs =
+        ISXuiSkin.build(
+            self.xuiSkin,
+            "S_NeedsAStyle",
+            ISWidgetIngredientsInputs,
+            0,
+            0,
+            10,
+            10,
+            self.player,
+            self.logic
+        )
+
+    self.inputs.isBuildMenu =
+        self.isBuildMenu
+
+    self.inputs.interactiveMode =
+        true
+
+    self.inputs:initialise()
+    self.inputs:instantiate()
+
+
+    row = self.rootTable:addRow()
+
+    self.rootTable:setElement(
+        0,
+        row:index(),
+        self.inputs
+    )
+
+
+    -- =========================================================
+    -- OUTPUTS / RESULTS
+    -- =========================================================
+
+    self.outputs =
+        ISXuiSkin.build(
+            self.xuiSkin,
+            "S_NeedsAStyle",
+            ISWidgetIngredientsOutputs,
+            0,
+            0,
+            10,
+            10,
+            self.player,
+            self.logic
+        )
+
+    self.outputs.isBuildMenu =
+        self.isBuildMenu
+
+    self.outputs.interactiveMode =
+        true
+
+    self.outputs:initialise()
+    self.outputs:instantiate()
+
+
+    if #self.outputs.outputs > 0 then
+
+        row = self.rootTable:addRow()
+
+        self.rootTable:setElement(
+            0,
+            row:index(),
+            self.outputs
+        )
+
+    else
+
+        self.outputs = nil
+
+    end
+
+
+    -- =========================================================
+    -- BETTER CRAFT WINDOW - CRAFTING EXPERIENCE
+    --
+    -- Placed directly below Results.
+    -- =========================================================
+
+    self.bcwXPWidget = nil
+
+    local xpCount =
+        recipe:getXPAwardCount()
+
+    if xpCount and xpCount > 0 then
+
+        self.bcwXPWidget =
+            ISWidgetRecipeXP:new(
+                0,
+                0,
+                10,
+                10,
+                self.player,
+                self.logic
+            )
+
+        self.bcwXPWidget:initialise()
+        self.bcwXPWidget:instantiate()
+
+
+        row = self.rootTable:addRow()
+
+        self.rootTable:setElement(
+            0,
+            row:index(),
+            self.bcwXPWidget
+        )
+
+    end
+
+
+    -- =========================================================
+    -- FILLER
+    --
+    -- This flexible row now starts AFTER the XP section,
+    -- so XP stays directly below Results.
+    -- =========================================================
+
+    self.rootTable:addRowFill(nil)
+
+
+    -- =========================================================
+    -- CRAFT CONTROL
+    -- =========================================================
+
+    self.craftControl =
+        ISXuiSkin.build(
+            self.xuiSkin,
+            "S_NeedsAStyle",
+            ISWidgetHandCraftControl,
+            0,
+            0,
+            10,
+            10,
+            self.player,
+            self.logic
+        )
+
+    self.craftControl.interactiveMode =
+        true
+
+    self.craftControl.allowBatchCraft =
+        recipe:isAllowBatchCraft()
+
+    self.craftControl:initialise()
+    self.craftControl:instantiate()
+
+
+    row = self.rootTable:addRow()
+
+    self.rootTable:setElement(
+        0,
+        row:index(),
+        self.craftControl
+    )
+
+
+    -- =========================================================
+    -- FINAL LAYOUT
+    -- =========================================================
 
     self:xuiRecalculateLayout()
 end
