@@ -377,12 +377,87 @@ local function recipeHasBCWOutput(recipe, fullName)
     return false
 end
 
+-- Return the unfiltered recipe context restricted to the currently selected
+-- vanilla category. This is used only to build BCW's item list; the vanilla
+-- category widget itself remains completely untouched.
+function ISBCWHandCraftPanel:getBCWCategoryRecipeList()
+    local recipes = self:getBCWBaseRecipeList()
+
+    if not recipes then
+        return nil
+    end
+
+    local category = self._categoryString
+
+    -- Empty category is vanilla's ALL category.
+    if not category or category == "" then
+        return recipes
+    end
+
+    -- Do not ask a second HandcraftLogic to apply the category filter here.
+    -- That path did not reliably mirror the category currently selected in
+    -- ISWidgetRecipeCategories and caused the BCW item list to be built from
+    -- the whole category set. Instead, scope the source recipes explicitly to
+    -- the exact category selected by the vanilla category widget.
+    local filtered = ArrayList.new()
+
+    for recipeIndex = 0, recipes:size() - 1 do
+        local recipe = recipes:get(recipeIndex)
+
+        if recipe then
+            local matches = false
+
+            if category == "*" then
+                -- Vanilla Favourites category.
+                local favString = BaseCraftingLogic.getFavouriteModDataString(recipe)
+                matches = self.player:getModData()[favString] == true
+            else
+                matches = recipe:getCategory() == category
+            end
+
+            if matches then
+                filtered:add(recipe)
+            end
+        end
+    end
+
+    return filtered
+end
+
+local function findBCWCraftItemEntry(items, fullName)
+    if not fullName then
+        return nil
+    end
+
+    for _, entry in ipairs(items or {}) do
+        if entry.fullName == fullName then
+            return entry
+        end
+    end
+
+    return nil
+end
+
+function ISBCWHandCraftPanel:isBCWCraftItemValidForCurrentType(entry)
+    if not entry then
+        return false
+    end
+
+    local filterType = self.bcwCraftItemFilterType or "Both"
+
+    return filterType == "Both"
+        or (filterType == "Ingredient" and entry.isIngredient == true)
+        or (filterType == "Result" and entry.isResult == true)
+end
+
 function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     if not self.bcwCraftItemFilterPanel then
         return
     end
 
-    local recipes = self:getBCWBaseRecipeList()
+    -- Important: the item list follows the selected VANILLA category.
+    -- Example: selecting Forge only exposes inputs/results from Forge recipes.
+    local recipes = self:getBCWCategoryRecipeList()
     local byFullName = {}
     local items = {}
 
@@ -409,6 +484,20 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     end)
 
     self.bcwCraftItems = items
+
+    -- A selected item may disappear when the vanilla category changes.
+    -- In that case BCW falls back to ALL, rather than keeping a hidden filter.
+    if self.bcwSelectedCraftItemFullName then
+        local selectedEntry = findBCWCraftItemEntry(
+            items,
+            self.bcwSelectedCraftItemFullName
+        )
+
+        if not self:isBCWCraftItemValidForCurrentType(selectedEntry) then
+            self.bcwSelectedCraftItemFullName = nil
+        end
+    end
+
     self.bcwCraftItemFilterPanel:setItems(items)
     self.bcwCraftItemFilterPanel:setFilterType(self.bcwCraftItemFilterType or "Both")
     self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
@@ -469,28 +558,30 @@ end
 function ISBCWHandCraftPanel:onBCWCraftItemFilterTypeChanged(filterType)
     self.bcwCraftItemFilterType = filterType or "Both"
 
-    local selectedEntry = nil
-    if self.bcwSelectedCraftItemFullName then
-        for _, entry in ipairs(self.bcwCraftItems or {}) do
-            if entry.fullName == self.bcwSelectedCraftItemFullName then
-                selectedEntry = entry
-                break
-            end
-        end
-    end
+    local selectedEntry = findBCWCraftItemEntry(
+        self.bcwCraftItems,
+        self.bcwSelectedCraftItemFullName
+    )
 
-    if selectedEntry then
-        local validForType = self.bcwCraftItemFilterType == "Both"
-            or (self.bcwCraftItemFilterType == "Ingredient" and selectedEntry.isIngredient)
-            or (self.bcwCraftItemFilterType == "Result" and selectedEntry.isResult)
-
-        if not validForType then
-            self.bcwSelectedCraftItemFullName = nil
-        end
+    if self.bcwSelectedCraftItemFullName
+        and not self:isBCWCraftItemValidForCurrentType(selectedEntry) then
+        self.bcwSelectedCraftItemFullName = nil
     end
 
     self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
     self:applyBCWCraftItemRecipeFilter()
+    self.logic:checkValidRecipeSelected()
+    self:onRecipeChanged(self.logic:getRecipe())
+end
+
+-- Category selection remains vanilla-owned. BCW only observes the selected
+-- category so it can rebuild its own item list from that category's recipes.
+function ISBCWHandCraftPanel:onCategoryChanged(category)
+    self._categoryString = category
+
+    self:rebuildBCWCraftItemList()
+    self:applyBCWCraftItemRecipeFilter()
+
     self.logic:checkValidRecipeSelected()
     self:onRecipeChanged(self.logic:getRecipe())
 end
