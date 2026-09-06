@@ -108,6 +108,30 @@ function ISBCWHandCraftPanel:getBCWBaseRecipeList()
     return nil
 end
 
+-- The custom item filter must never alter the vanilla category list.
+-- self.logic may temporarily contain only the recipes matching the selected
+-- BCW item, so asking it for getCategoryList() would make categories disappear
+-- and would also change the auto-width of the vanilla category column.
+-- Build the category list from the unfiltered context instead, exactly as if
+-- no BCW item were selected.
+function ISBCWHandCraftPanel:getCategoryList()
+    local recipes = self:getBCWBaseRecipeList()
+
+    if not recipes then
+        return self.logic:getCategoryList()
+    end
+
+    local categoryLogic = HandcraftLogic.new(
+        self.player,
+        self.craftBench,
+        self.isoObject
+    )
+
+    categoryLogic:setRecipes(recipes)
+
+    return categoryLogic:getCategoryList()
+end
+
 local function addBCWItemEntry(byFullName, items, itemScript, isIngredient, isResult)
     if not itemScript then
         return
