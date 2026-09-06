@@ -67,6 +67,11 @@ function ISBCWCraftItemFilterPanel:createChildren()
     self.itemList.selected = 1
     self.itemList:setOnMouseDownFunction(self, self.onItemSelected)
     self:addChild(self.itemList)
+
+    -- Keep the controls above the scrolling list in the draw order.
+    -- ISScrollingListBox can otherwise paint scrolled rows over them.
+    self.searchEntry:bringToTop()
+    self.typeCombo:bringToTop()
 end
 
 function ISBCWCraftItemFilterPanel:setItems(items)

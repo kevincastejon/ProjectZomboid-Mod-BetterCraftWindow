@@ -402,6 +402,38 @@ function ISBetterCraftWindow:layoutTabs()
     return bottom + margin
 end
 
+
+function ISBetterCraftWindow:xuiRecalculateLayout(_preferredWidth, _preferredHeight, _force, _anchorRight)
+    -- Child XUI widgets (notably the vanilla manual ingredient panel)
+    -- request a root-window relayout when they open/close or rebuild.
+    -- Our custom window must handle that request just like ISHandcraftWindow.
+    -- We only mark the layout dirty here; the actual recalculation is deferred
+    -- to prerender so we don't reintroduce the recipe-list scroll reset bug.
+    if self.calculateLayout and ((not self.dirtyLayout) or _force) then
+        self.xuiPreferredResizeWidth = self.width
+        self.xuiPreferredResizeHeight = self.height
+        self.xuiResizeAnchorRight = _anchorRight == true
+
+        if _preferredWidth then
+            if _preferredWidth < 0 then
+                self.xuiPreferredResizeWidth = self.width + _preferredWidth
+            else
+                self.xuiPreferredResizeWidth = _preferredWidth
+            end
+        end
+
+        if _preferredHeight then
+            if _preferredHeight < 0 then
+                self.xuiPreferredResizeHeight = self.height + _preferredHeight
+            else
+                self.xuiPreferredResizeHeight = _preferredHeight
+            end
+        end
+
+        self.dirtyLayout = true
+    end
+end
+
 function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
     local width = math.max(self.minimumWidth, preferredWidth or self.width)
     local height = math.max(self.minimumHeight, preferredHeight or self.height)
@@ -481,8 +513,26 @@ function ISBetterCraftWindow:prerender()
     -- ISWidgetRecipeListPanel:onResize() calls ensureVisible(selected),
     -- which would otherwise force the scroll position back to the
     -- selected recipe immediately after every mouse-wheel scroll.
+    --
+    -- When an XUI child explicitly asks for a relayout (for example when
+    -- the vanilla manual ingredient panel opens/closes), use the preferred
+    -- size requested by that child. This mirrors vanilla ISHandcraftWindow.
     if self.dirtyLayout then
-        self:calculateLayout(self.width, self.height)
+        local oldX = self:getX()
+        local oldWidth = self:getWidth()
+
+        self:calculateLayout(
+            self.xuiPreferredResizeWidth or self.width,
+            self.xuiPreferredResizeHeight or self.height
+        )
+
+        if self.xuiResizeAnchorRight then
+            self:setX(oldX - (self:getWidth() - oldWidth))
+            self.xuiResizeAnchorRight = false
+        end
+
+        self.xuiPreferredResizeWidth = self.width
+        self.xuiPreferredResizeHeight = self.height
     end
 
     ISCollapsableWindow.prerender(self)
@@ -529,6 +579,9 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
     o.scanTimer = ISBetterCraftWindow.SCAN_INTERVAL
     o.bcwClosing = false
     o.dirtyLayout = true
+    o.xuiPreferredResizeWidth = width
+    o.xuiPreferredResizeHeight = height
+    o.xuiResizeAnchorRight = false
 
     return o
 end
