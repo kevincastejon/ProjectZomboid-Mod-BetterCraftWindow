@@ -92,14 +92,14 @@ function ISBCWRecipeFilterPanel:createChildren()
 end
 
 function ISBCWRecipeFilterPanel:updateBCWButtons()
-    local hideUnknown = self.callbackTarget and self.callbackTarget.bcwHideUnknownRecipes == true
+    local showUnknown = self.callbackTarget and self.callbackTarget.bcwShowUnknownRecipes == true
 
     if self.unknownRecipeButton then
-        self.unknownRecipeButton.bcwToggleActive = hideUnknown
+        self.unknownRecipeButton.bcwToggleActive = showUnknown
 
         local good = getCore():getGoodHighlitedColor()
 
-        if hideUnknown then
+        if showUnknown then
             self.unknownRecipeButton.backgroundColor.a = 0.85
             self.unknownRecipeButton.borderColor.a = 1.0
             self.unknownRecipeButton.borderColor.r = good:getR()
@@ -113,7 +113,7 @@ function ISBCWRecipeFilterPanel:updateBCWButtons()
             self.unknownRecipeButton.borderColor.b = 1.0
         end
 
-        self.unknownRecipeButton.tooltip = hideUnknown
+        self.unknownRecipeButton.tooltip = showUnknown
             and "Unknown recipes hidden. Click to show them."
             or "Unknown recipes shown. Click to hide them."
     end

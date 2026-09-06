@@ -522,7 +522,7 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
 end
 
 function ISBCWHandCraftPanel:recipePassesBCWVisibilityFilters(recipe)
-    if self.bcwHideUnknownRecipes and not isBCWRecipeKnown(self.player, recipe) then
+    if self.bcwShowUnknownRecipes and not isBCWRecipeKnown(self.player, recipe) then
         return false
     end
 
@@ -639,13 +639,13 @@ function ISBCWHandCraftPanel:refreshRecipeList(forceRefresh)
     ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
     self:rebuildBCWCraftItemList()
 
-    if self.bcwSelectedCraftItemFullName or self.bcwHideUnknownRecipes then
+    if self.bcwSelectedCraftItemFullName or self.bcwShowUnknownRecipes then
         self:applyBCWCraftItemRecipeFilter()
     end
 end
 
 function ISBCWHandCraftPanel:toggleBCWHideUnknownRecipes()
-    self.bcwHideUnknownRecipes = not self.bcwHideUnknownRecipes
+    self.bcwShowUnknownRecipes = not self.bcwShowUnknownRecipes
 
     -- Do not rebuild/filter BCW's item list here: this toggle is strictly
     -- a recipe-visibility filter.
@@ -714,7 +714,7 @@ function ISBCWHandCraftPanel:new(
     o.bcwSelectedCraftItemFullName = nil
     o.bcwCraftItemFilterType = "Both"
     o.bcwCraftItems = {}
-    o.bcwHideUnknownRecipes = false
+    o.bcwShowUnknownRecipes = false
 
     return o
 end
