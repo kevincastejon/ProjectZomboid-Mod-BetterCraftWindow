@@ -205,7 +205,8 @@ function ISBetterCraftWindow:createHandCraftPanel(entry)
         self.player,
         craftBench,
         isoObject,
-        recipeQuery
+        recipeQuery,
+        entry == nil
     )
 
     self.handCraftPanel:initialise()
