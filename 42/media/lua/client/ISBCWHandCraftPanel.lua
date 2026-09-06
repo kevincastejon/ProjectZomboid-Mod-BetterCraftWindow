@@ -453,6 +453,18 @@ function ISBCWHandCraftPanel:isBCWCraftItemValidForCurrentType(entry)
         or (filterType == "Result" and entry.isResult == true)
 end
 
+local function isBCWRecipeKnown(player, recipe)
+    if not recipe then
+        return false
+    end
+
+    if not recipe:needToBeLearn() then
+        return true
+    end
+
+    return player:isRecipeKnown(recipe, true)
+end
+
 function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     if not self.bcwCraftItemFilterPanel then
         return
@@ -468,7 +480,7 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
         for recipeIndex = 0, recipes:size() - 1 do
             local recipe = recipes:get(recipeIndex)
 
-            if recipe then
+            if recipe and (not self.bcwHideUnknownRecipes or isBCWRecipeKnown(self.player, recipe)) then
                 collectBCWRecipeInputs(recipe, byFullName, items)
                 collectBCWRecipeOutputs(recipe, byFullName, items)
             end
@@ -506,16 +518,32 @@ function ISBCWHandCraftPanel:rebuildBCWCraftItemList()
     self.bcwCraftItemFilterPanel:setSelectedFullName(self.bcwSelectedCraftItemFullName)
 end
 
-function ISBCWHandCraftPanel:applyBCWCraftItemRecipeFilter()
-    local fullName = self.bcwSelectedCraftItemFullName
+function ISBCWHandCraftPanel:recipePassesBCWVisibilityFilters(recipe)
+    if self.bcwHideUnknownRecipes and not isBCWRecipeKnown(self.player, recipe) then
+        return false
+    end
 
+    local fullName = self.bcwSelectedCraftItemFullName
     if not fullName then
-        ISHandCraftPanel.refreshRecipeList(self, true)
-        self:filterRecipeList()
-        return
+        return true
     end
 
     local filterType = self.bcwCraftItemFilterType or "Both"
+    local matchesIngredient = false
+    local matchesResult = false
+
+    if filterType == "Both" or filterType == "Ingredient" then
+        matchesIngredient = recipeHasBCWInput(recipe, fullName)
+    end
+
+    if filterType == "Both" or filterType == "Result" then
+        matchesResult = recipeHasBCWOutput(recipe, fullName)
+    end
+
+    return matchesIngredient or matchesResult
+end
+
+function ISBCWHandCraftPanel:applyBCWCraftItemRecipeFilter()
     local baseRecipes = self:getBCWBaseRecipeList()
     local filteredRecipes = ArrayList.new()
 
@@ -523,21 +551,8 @@ function ISBCWHandCraftPanel:applyBCWCraftItemRecipeFilter()
         for recipeIndex = 0, baseRecipes:size() - 1 do
             local recipe = baseRecipes:get(recipeIndex)
 
-            if recipe then
-                local matchesIngredient = false
-                local matchesResult = false
-
-                if filterType == "Both" or filterType == "Ingredient" then
-                    matchesIngredient = recipeHasBCWInput(recipe, fullName)
-                end
-
-                if filterType == "Both" or filterType == "Result" then
-                    matchesResult = recipeHasBCWOutput(recipe, fullName)
-                end
-
-                if matchesIngredient or matchesResult then
-                    filteredRecipes:add(recipe)
-                end
+            if recipe and self:recipePassesBCWVisibilityFilters(recipe) then
+                filteredRecipes:add(recipe)
             end
         end
     end
@@ -621,9 +636,50 @@ function ISBCWHandCraftPanel:refreshRecipeList(forceRefresh)
     ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
     self:rebuildBCWCraftItemList()
 
-    if self.bcwSelectedCraftItemFullName then
+    if self.bcwSelectedCraftItemFullName or self.bcwHideUnknownRecipes then
         self:applyBCWCraftItemRecipeFilter()
     end
+end
+
+function ISBCWHandCraftPanel:toggleBCWHideUnknownRecipes()
+    self.bcwHideUnknownRecipes = not self.bcwHideUnknownRecipes
+
+    self:rebuildBCWCraftItemList()
+    self:applyBCWCraftItemRecipeFilter()
+    self.logic:checkValidRecipeSelected()
+    self:onRecipeChanged(self.logic:getRecipe())
+
+    local filterPanel = self.recipesPanel and self.recipesPanel.recipeFilterPanel
+    if filterPanel and filterPanel.updateBCWButtons then
+        filterPanel:updateBCWButtons()
+    end
+end
+
+function ISBCWHandCraftPanel:refreshBCWCraftingData()
+    -- Force a complete client-side rescan of inventory containers and recipe
+    -- availability. This is intentionally a manual workaround for vanilla UI
+    -- states that can remain stale after inventory changes.
+    self:updateContainers(true)
+
+    if self.recipeQuery then
+        self.logic:setRecipes(CraftRecipeManager.queryRecipes(self.recipeQuery))
+    elseif self.craftBench then
+        self.logic:setRecipes(self.craftBench:getRecipes())
+    end
+
+    if self.seeAllRecipe then
+        self.logic:setRecipes(ScriptManager.instance:getAllCraftRecipes())
+    end
+
+    self:rebuildBCWCraftItemList()
+    self:applyBCWCraftItemRecipeFilter()
+
+    self.logic:autoPopulateInputs()
+    self.logic:checkValidRecipeSelected()
+    self:onRecipeChanged(self.logic:getRecipe())
+
+    -- Rebuild the dynamic detail widgets against the fresh cached state.
+    self:xuiRecalculateLayout()
 end
 
 function ISBCWHandCraftPanel:new(
@@ -654,6 +710,7 @@ function ISBCWHandCraftPanel:new(
     o.bcwSelectedCraftItemFullName = nil
     o.bcwCraftItemFilterType = "Both"
     o.bcwCraftItems = {}
+    o.bcwHideUnknownRecipes = false
 
     return o
 end

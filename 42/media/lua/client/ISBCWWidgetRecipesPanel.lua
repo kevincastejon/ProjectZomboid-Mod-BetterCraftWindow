@@ -1,7 +1,30 @@
 require "Entity/ISUI/CraftRecipe/ISWidgetRecipesPanel"
 require "ISBCWWidgetRecipeListPanel"
+require "ISBCWRecipeFilterPanel"
 
 ISBCWWidgetRecipesPanel = ISWidgetRecipesPanel:derive("ISBCWWidgetRecipesPanel")
+
+
+function ISBCWWidgetRecipesPanel:createRecipeFilterPanel(_parentTable)
+    self.recipeFilterPanel = ISXuiSkin.build(
+        self.xuiSkin,
+        "S_NeedsAStyle",
+        ISBCWRecipeFilterPanel,
+        0, 0, 10, 10,
+        self.callbackTarget
+    )
+    self.recipeFilterPanel:setSearchInfoText(getText("IGUI_CraftingWindow_SearchRecipes"))
+    self.recipeFilterPanel.isBuildMenu = self.isBuildMenu
+    self.recipeFilterPanel.showAllCraftFilterTickBox = self.showAllCraftFilterTickBox
+    self.recipeFilterPanel.needFilterCombo = self.needFilterCombo
+    self.recipeFilterPanel.needSortCombo = self.needSortCombo
+    self.recipeFilterPanel.showFilterByOutputItem = self.showFilterByOutputItem
+    self.recipeFilterPanel:initialise()
+    self.recipeFilterPanel:instantiate()
+
+    self.recipeFilterPanelRow = _parentTable:addRow(nil)
+    _parentTable:setElement(0, self.recipeFilterPanelRow:index(), self.recipeFilterPanel)
+end
 
 function ISBCWWidgetRecipesPanel:createRecipeListPanel(_parentTable)
     self.recipeListPanelRow = _parentTable:addRowFill(nil)
