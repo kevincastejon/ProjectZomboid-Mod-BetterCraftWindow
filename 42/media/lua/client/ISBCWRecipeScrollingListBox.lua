@@ -13,6 +13,8 @@ local LIST_SUBICON_SPACING = 2 * ICON_SCALE
 local SUBCATEGORY_INDENT = LIST_ICON_SIZE
 local XP_TEXT_GAP = 2 * ICON_SCALE
 local XP_ROW_GAP = 2 * ICON_SCALE
+local RIGHT_COLUMN_GAP = 6 * ICON_SCALE
+local RIGHT_COLUMN_MIN_WIDTH = 92 * FONT_SCALE
 
 ISBCWRecipeScrollingListBox = ISRecipeScrollingListBox:derive("ISBCWRecipeScrollingListBox")
 
@@ -142,13 +144,24 @@ function ISBCWRecipeScrollingListBox:doDrawNode(y, item, _alt)
         iconRight = iconRight - LIST_SUBICON_SIZE - LIST_SUBICON_SPACING
     end
 
+    -- BCW uses two conceptual columns in every recipe row:
+    --   left  = recipe title / description / requirements
+    --   right = vanilla condition icons + XP icon/value rows
+    --
+    -- Do not size the right column only from the content currently drawn in it.
+    -- That made short XP values/one condition icon shrink the reserved area and
+    -- allowed long grey descriptions to run underneath the icons.  Keep a stable
+    -- minimum gutter, while still growing it for unusually wide XP values or a
+    -- larger set of vanilla condition icons.
     local topRightReserved = (safeDrawWidth - iconRight) + UI_BORDER_SPACING
     local xpRightReserved = self:getBCWXPColumnWidth(craftRecipe)
-    local rightReserved = math.max(topRightReserved, xpRightReserved)
+    local rightReserved = math.max(RIGHT_COLUMN_MIN_WIDTH, topRightReserved, xpRightReserved)
+    local contentRight = math.max(detailsLeft + 40, safeDrawWidth - rightReserved - RIGHT_COLUMN_GAP)
+    local contentWidth = math.max(40, contentRight - detailsLeft)
 
     local headerAdj = (LIST_SUBICON_SIZE - FONT_HGT_HEADING) / 2
     detailsY = detailsY + headerAdj
-    local maxTitleWidth = math.max(40, (safeDrawWidth - detailsLeft) - rightReserved)
+    local maxTitleWidth = contentWidth
     local titleStr = getTextManager():WrapText(UIFont.Small, craftRecipe:getTranslationName(), maxTitleWidth, 2, "...")
 
     if isDebugEnabled() then
@@ -165,14 +178,15 @@ function ISBCWRecipeScrollingListBox:doDrawNode(y, item, _alt)
 
     if craftRecipe:getTooltip() then
         local text = getText(craftRecipe:getTooltip())
-        if self.wrapTooltipText then
-            local tooltipWidth = math.max(40, (safeDrawWidth - detailsLeft) - rightReserved)
-            text = text:gsub("\n", " ")
-            text = getTextManager():WrapText(UIFont.Small, text, tooltipWidth)
-        end
+
+        -- BCW always constrains the small grey description to the left content
+        -- column. Vanilla may leave this unwrapped depending on the parent
+        -- panel flags, which lets it overlap the right-side condition/XP column.
+        text = text:gsub("\n", " ")
+        text = getTextManager():WrapText(UIFont.Small, text, contentWidth)
+
         self:drawText(text, detailsLeft, y + detailsY, 0.5, 0.5, 0.5, color.a, UIFont.Small)
-        local split = luautils.split(text, "\n")
-        for _i,_v in ipairs(split) do detailsY = detailsY + FONT_HGT_SMALL end
+        detailsY = detailsY + getTextManager():MeasureStringY(UIFont.Small, text)
     end
 
     if craftRecipe:getRequiredSkillCount() > 0 then
@@ -181,8 +195,9 @@ function ISBCWRecipeScrollingListBox:doDrawNode(y, item, _alt)
             local hasSkill = CraftRecipeManager.hasPlayerRequiredSkill(requiredSkill, self.player)
             local lineColor = hasSkill and colGood or colBad
             local text = getText("IGUI_CraftingWindow_Requires2") .. " " .. tostring(requiredSkill:getPerk():getName()) .. " " .. getText("IGUI_CraftingWindow_Level") .. " " .. tostring(requiredSkill:getLevel())
+            text = getTextManager():WrapText(UIFont.Small, text, contentWidth)
             self:drawText(text, detailsLeft, y + detailsY, lineColor.r, lineColor.g, lineColor.b, lineColor.a, UIFont.Small)
-            detailsY = detailsY + FONT_HGT_SMALL
+            detailsY = detailsY + getTextManager():MeasureStringY(UIFont.Small, text)
         end
     end
 
