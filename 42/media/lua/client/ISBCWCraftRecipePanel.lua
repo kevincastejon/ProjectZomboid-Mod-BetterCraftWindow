@@ -1,5 +1,6 @@
 require "Entity/ISUI/CraftRecipe/ISCraftRecipePanel"
 require "ISWidgetRecipeXP"
+require "ISBCWWidgetIngredientsOutputs"
 
 ISBCWCraftRecipePanel = ISCraftRecipePanel:derive("ISBCWCraftRecipePanel")
 
@@ -56,13 +57,14 @@ function ISBCWCraftRecipePanel:createDynamicChildren()
     self.outputs = ISXuiSkin.build(
         self.xuiSkin,
         "S_NeedsAStyle",
-        ISWidgetIngredientsOutputs,
+        ISBCWWidgetIngredientsOutputs,
         0, 0, 10, 10,
         self.player,
         self.logic
     )
     self.outputs.isBuildMenu = self.isBuildMenu
     self.outputs.interactiveMode = true
+    self.outputs.bcwHandCraftPanel = self.bcwHandCraftPanel
     self.outputs:initialise()
     self.outputs:instantiate()
 

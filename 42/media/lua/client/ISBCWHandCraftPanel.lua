@@ -85,6 +85,7 @@ function ISBCWHandCraftPanel:createRecipePanel()
         self.player,
         self.logic
     )
+    self.recipePanel.bcwHandCraftPanel = self
     self.recipePanel:initialise()
     self.recipePanel:instantiate()
     self.recipePanel.isBuildMenu = false
@@ -542,6 +543,19 @@ function ISBCWHandCraftPanel:applyBCWCraftItemRecipeFilter()
 
     self.logic:setRecipes(filteredRecipes)
     self:filterRecipeList()
+end
+
+-- BCW-specific replacement for vanilla Shift-click on Results.
+-- It only fills the custom item-search box; it does not touch the vanilla
+-- recipe search field or the current item selection/filter.
+function ISBCWHandCraftPanel:setBCWItemSearchText(itemName)
+    local panel = self.bcwCraftItemFilterPanel
+    if not panel or not panel.searchEntry then
+        return
+    end
+
+    panel.searchEntry:setText(itemName or "")
+    panel:onSearchTextChanged()
 end
 
 function ISBCWHandCraftPanel:onBCWCraftItemFilterChanged(entry)
