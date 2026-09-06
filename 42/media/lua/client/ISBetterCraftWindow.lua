@@ -300,6 +300,7 @@ function ISBetterCraftWindow:rebuildTabs()
     end
 
     self:updateTabState()
+    self.dirtyLayout = true
 end
 
 function ISBetterCraftWindow:updateTabState()
@@ -419,6 +420,8 @@ function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
             math.max(0, height - contentY - resizeHeight)
         )
     end
+
+    self.dirtyLayout = false
 end
 
 function ISBetterCraftWindow:onResize()
@@ -455,7 +458,15 @@ end
 
 function ISBetterCraftWindow:prerender()
     self:stayOnSplitScreen()
-    self:calculateLayout(self.width, self.height)
+
+    -- Do not recalculate the entire HandCraft layout every frame.
+    -- ISWidgetRecipeListPanel:onResize() calls ensureVisible(selected),
+    -- which would otherwise force the scroll position back to the
+    -- selected recipe immediately after every mouse-wheel scroll.
+    if self.dirtyLayout then
+        self:calculateLayout(self.width, self.height)
+    end
+
     ISCollapsableWindow.prerender(self)
 end
 
@@ -499,6 +510,7 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
     o.isoObject = nil
     o.scanTimer = ISBetterCraftWindow.SCAN_INTERVAL
     o.bcwClosing = false
+    o.dirtyLayout = true
 
     return o
 end
