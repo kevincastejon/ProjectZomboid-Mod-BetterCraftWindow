@@ -923,6 +923,65 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
     return o
 end
 
+function ISBetterCraftWindow:selectWorkstationObject(isoObject)
+    if not isoObject then
+        self:setContext(nil)
+        return false
+    end
+
+    local craftBench = getCraftBench(isoObject)
+    if not craftBench then
+        return false
+    end
+
+    -- Re-scan first so the tab list reflects the world at the moment the
+    -- workstation was clicked.
+    self:refreshWorkstations(true)
+
+    local entry = findEntry(self.workstations, isoObject)
+
+    if not entry then
+        -- A workstation opened through the vanilla object-click path is
+        -- already a valid nearby entity. If the periodic BCW scan omitted it
+        -- for an edge case, inject it into the current tab list rather than
+        -- falling back to ALL.
+        entry = {
+            isoObject = isoObject,
+            craftBench = craftBench,
+            name = getWorkstationName(isoObject),
+            displayName = getWorkstationName(isoObject),
+            distance = getDistance(self.player, isoObject)
+        }
+
+        table.insert(self.workstations, entry)
+
+        -- Rebuild duplicate numbering exactly like scanWorkstations().
+        local totals = {}
+        local counts = {}
+
+        for _, workstation in ipairs(self.workstations) do
+            totals[workstation.name] = (totals[workstation.name] or 0) + 1
+        end
+
+        for _, workstation in ipairs(self.workstations) do
+            local name = workstation.name
+            counts[name] = (counts[name] or 0) + 1
+
+            if totals[name] > 1 then
+                workstation.displayName = name .. " (" .. tostring(counts[name]) .. ")"
+            else
+                workstation.displayName = name
+            end
+        end
+
+        self:rebuildTabs()
+    end
+
+    self:setContext(entry)
+    self:bringToTop()
+    return true
+end
+
 function ISBetterCraftWindow.open(player)
     if not player then
         return nil
@@ -951,6 +1010,20 @@ function ISBetterCraftWindow.open(player)
     window:bringToTop()
 
     ISBetterCraftWindow.instances[playerNum] = window
+    return window
+end
+
+function ISBetterCraftWindow.openForWorkstation(player, isoObject)
+    if not player or not isoObject then
+        return nil
+    end
+
+    local window = ISBetterCraftWindow.open(player)
+    if not window then
+        return nil
+    end
+
+    window:selectWorkstationObject(isoObject)
     return window
 end
 

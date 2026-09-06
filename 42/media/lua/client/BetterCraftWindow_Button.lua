@@ -1,47 +1,37 @@
 require "ISUI/ISEquippedItem"
+require "Entity/ISEntityUI"
 require "ISBetterCraftWindow"
 
-local UI_BORDER_SPACING = 10
+local vanillaOnOptionMouseDown = ISEquippedItem.onOptionMouseDown
+local vanillaOpenWindow = ISEntityUI.OpenWindow
 
-local function onBetterCraftWindowButton(target)
-    if not target or not target.chr then
+-- Redirect only the vanilla Crafting button.
+function ISEquippedItem:onOptionMouseDown(button, x, y)
+    if button and button.internal == "CRAFTING" then
+        ISBetterCraftWindow.toggle(self.chr)
         return
     end
 
-    ISBetterCraftWindow.toggle(target.chr)
+    return vanillaOnOptionMouseDown(self, button, x, y)
 end
 
-local vanillaInitialise = ISEquippedItem.initialise
+-- Redirect only entity windows backed by a real CraftBench component.
+-- Everything else (generators, radios, appliances, etc.) remains vanilla.
+function ISEntityUI.OpenWindow(player, entity)
+    if entity then
+        local craftBench = entity:getComponent(ComponentType.CraftBench)
 
-function ISEquippedItem:initialise()
-    vanillaInitialise(self)
+        if craftBench then
+            if not ISEntityUI.CanOpenWindowFor(player, entity) then
+                return
+            end
 
-    if not self.chr or self.chr:getPlayerNum() ~= 0 or self.bcwButton then
-        return
+            -- Deliberately do NOT call CanPlayerUseEntity here. BCW allows an
+            -- occupied workstation tab to open and display its busy message.
+            ISBetterCraftWindow.openForWorkstation(player, entity)
+            return
+        end
     end
 
-    local reference = self.craftingBtn or self.buildBtn or self.invBtn
-    if not reference then
-        return
-    end
-
-    local y = self:getHeight() + UI_BORDER_SPACING + 5
-
-    self.bcwButton = ISButton:new(
-        0,
-        y,
-        reference:getWidth(),
-        reference:getHeight(),
-        "BCW",
-        self,
-        onBetterCraftWindowButton
-    )
-    self.bcwButton:initialise()
-    self.bcwButton:instantiate()
-    self.bcwButton:ignoreWidthChange()
-    self.bcwButton:ignoreHeightChange()
-    self:addChild(self.bcwButton)
-    self:addMouseOverToolTipItem(self.bcwButton, "Better Craft Window")
-
-    self:setHeight(self.bcwButton:getBottom())
+    return vanillaOpenWindow(player, entity)
 end
