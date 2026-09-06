@@ -1,5 +1,6 @@
 require "ISUI/ISCollapsableWindow"
 require "ISUI/ISButton"
+require "ISUI/ISUIElement"
 require "Entity/ISEntityUI"
 require "ISBCWHandCraftPanel"
 
@@ -107,6 +108,7 @@ function ISBetterCraftWindow:scanWorkstations()
         return a.name < b.name
     end)
 
+
     local totals = {}
     local counts = {}
 
@@ -168,7 +170,43 @@ function ISBetterCraftWindow:claimWorkstation(entry)
     entry.isoObject:setUsingPlayer(self.player)
     self.activeWorkstation = entry.isoObject
     self.activeCraftBench = entry.craftBench
+    self.selectedWorkstation = entry.isoObject
     return true
+end
+
+function ISBetterCraftWindow:destroyBusyContent()
+    if not self.busyContent then
+        return
+    end
+
+    self:removeChild(self.busyContent)
+    self.busyContent = nil
+end
+
+function ISBetterCraftWindow:createBusyContent()
+    self:destroyBusyContent()
+
+    local panel = ISUIElement:new(0, 0, 10, 10)
+    panel:initialise()
+    panel:instantiate()
+
+    panel.prerender = function(_self)
+        _self:drawRect(0, 0, _self:getWidth(), _self:getHeight(), 1.0, 0, 0, 0)
+
+        local cx = _self:getWidth() / 2
+        local cy = _self:getHeight() / 2
+
+        _self:drawTextCentre(
+            "This Workstation is busy",
+            cx,
+            cy - (getTextManager():getFontHeight(UIFont.Medium) / 2),
+            1, 1, 1, 1,
+            UIFont.Medium
+        )
+    end
+
+    self.busyContent = panel
+    self:addChild(panel)
 end
 
 function ISBetterCraftWindow:destroyHandCraftPanel()
@@ -182,6 +220,7 @@ function ISBetterCraftWindow:destroyHandCraftPanel()
 end
 
 function ISBetterCraftWindow:createHandCraftPanel(entry)
+    self:destroyBusyContent()
     self:destroyHandCraftPanel()
 
     local craftBench = nil
@@ -226,26 +265,43 @@ function ISBetterCraftWindow:setContext(entry)
     end
 
     if entry then
-        if self.activeWorkstation == entry.isoObject then
+        if self.selectedWorkstation == entry.isoObject then
             return
         end
 
         if not self:isWorkstationAvailable(entry) then
-            if isClient() then
-                self.player:Say(getText("IGUI_ObjectAlreadyUsedSayMessage"))
-            end
+            self:releaseWorkstation()
+            self:destroyHandCraftPanel()
+
+            self.selectedWorkstation = entry.isoObject
+            self.busyWorkstation = entry.isoObject
+            self:createBusyContent()
+
+            self:calculateLayout(self.width, self.height)
+            self:updateTabState()
             return
         end
-    elseif not self.activeWorkstation then
+    elseif not self.selectedWorkstation and not self.activeWorkstation then
         return
     end
 
     self:releaseWorkstation()
+    self.selectedWorkstation = nil
+    self.busyWorkstation = nil
+    self:destroyBusyContent()
 
     if entry and not self:claimWorkstation(entry) then
-        self:createHandCraftPanel(nil)
+        self.selectedWorkstation = entry.isoObject
+        self.busyWorkstation = entry.isoObject
+        self:destroyHandCraftPanel()
+        self:createBusyContent()
+        self:calculateLayout(self.width, self.height)
         self:updateTabState()
         return
+    end
+
+    if entry then
+        self.selectedWorkstation = entry.isoObject
     end
 
     self:createHandCraftPanel(entry)
@@ -313,9 +369,9 @@ function ISBetterCraftWindow:updateTabState()
         local selected
 
         if entry then
-            selected = entry.isoObject == self.activeWorkstation
+            selected = entry.isoObject == self.selectedWorkstation
         else
-            selected = self.activeWorkstation == nil
+            selected = self.selectedWorkstation == nil
         end
 
         if selected then
@@ -326,10 +382,12 @@ function ISBetterCraftWindow:updateTabState()
             button.borderColor.a = 0.5
         end
 
-        if entry then
-            button.enable = selected or self:isWorkstationAvailable(entry)
+        button.enable = true
+
+        if entry and not self:isWorkstationAvailable(entry) then
+            button.tooltip = "Workstation currently occupied"
         else
-            button.enable = true
+            button.tooltip = nil
         end
     end
 end
@@ -359,20 +417,61 @@ function ISBetterCraftWindow:refreshWorkstations(force)
         self:updateTabState()
     end
 
-    if self.activeWorkstation
-        and not findEntry(self.workstations, self.activeWorkstation)
+    if self.selectedWorkstation
+        and not findEntry(self.workstations, self.selectedWorkstation)
         and not self:isCrafting() then
         self:setContext(nil)
         return
     end
 
+    -- If the currently-selected busy workstation becomes available,
+    -- automatically claim it and restore the real crafting UI.
+    if self.busyWorkstation
+        and self.selectedWorkstation == self.busyWorkstation
+        and not self:isCrafting() then
+
+        local entry = findEntry(self.workstations, self.busyWorkstation)
+
+        if entry and self:isWorkstationAvailable(entry) then
+            self:destroyBusyContent()
+
+            if self:claimWorkstation(entry) then
+                self.busyWorkstation = nil
+                self.selectedWorkstation = entry.isoObject
+                self:createHandCraftPanel(entry)
+                self:updateTabState()
+                return
+            end
+
+            -- Another player may have claimed it between the availability
+            -- check and our claim attempt. Keep the busy state in that case.
+            self:createBusyContent()
+        end
+    end
+
     if self.activeWorkstation
         and not self.activeWorkstation:isUsingPlayer(self.player)
         and not self:isCrafting() then
+        local lostObject = self.activeWorkstation
+        local entry = findEntry(self.workstations, lostObject)
+
         self.activeWorkstation = nil
         self.activeCraftBench = nil
-        self:createHandCraftPanel(nil)
-        self:updateTabState()
+
+        if entry then
+            self.selectedWorkstation = lostObject
+            self.busyWorkstation = lostObject
+            self:destroyHandCraftPanel()
+            self:createBusyContent()
+            self:calculateLayout(self.width, self.height)
+            self:updateTabState()
+        else
+            self.selectedWorkstation = nil
+            self.busyWorkstation = nil
+            self:destroyBusyContent()
+            self:createHandCraftPanel(nil)
+            self:updateTabState()
+        end
     end
 end
 
@@ -606,6 +705,25 @@ function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
 
     local resizeHeight = self.resizable and self:resizeWidgetHeight() or 0
 
+    if self.busyContent then
+        self:setWidth(width)
+        self:setHeight(height)
+
+        local contentY = self:layoutTabs()
+
+        self.busyContent:setX(0)
+        self.busyContent:setY(contentY)
+        self.busyContent:setWidth(width)
+        self.busyContent:setHeight(math.max(0, height - contentY - resizeHeight))
+
+
+        self.busyContent:bringToTop()
+
+        syncResizeWidgets(self)
+        self.dirtyLayout = false
+        return
+    end
+
     if self.handCraftPanel then
         -- Match vanilla ISHandcraftWindow: first ask the child for its
         -- intrinsic minimum size without constraining it to the current
@@ -667,6 +785,7 @@ function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
         end
     end
 
+
     syncResizeWidgets(self)
     self.dirtyLayout = false
 end
@@ -696,6 +815,9 @@ function ISBetterCraftWindow:createChildren()
     self.workstations = self:scanWorkstations()
     self.activeWorkstation = nil
     self.activeCraftBench = nil
+    self.selectedWorkstation = nil
+    self.busyWorkstation = nil
+    self.busyContent = nil
 
     self:rebuildTabs()
     self:createHandCraftPanel(nil)
