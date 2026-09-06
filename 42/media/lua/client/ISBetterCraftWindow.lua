@@ -425,12 +425,30 @@ function ISBetterCraftWindow:calculateLayout(preferredWidth, preferredHeight)
 end
 
 function ISBetterCraftWindow:onResize()
+    -- Do not recalculate the layout from onResize().
+    -- ISResizeWidget normally calls setWidth()/setHeight() separately, and
+    -- the anchored resize widgets move between those two calls. During a
+    -- drag that changes the widget's local mouse coordinates and causes the
+    -- resize delta to be applied repeatedly / amplified.
+    --
+    -- Our resize widgets call calculateLayout() directly instead (see
+    -- createChildren), exactly like vanilla ISEntityWindow does.
     ISUIElement.onResize(self)
-    self:calculateLayout(self.width, self.height)
 end
 
 function ISBetterCraftWindow:createChildren()
     ISCollapsableWindow.createChildren(self)
+
+    -- Vanilla ISEntityWindow uses a custom resizeFunction for the same
+    -- reason: resizing a layout-heavy window through setWidth()/setHeight()
+    -- makes anchored children interfere with the drag calculation.
+    -- Feed the requested mouse size straight into our layout in one pass.
+    if self.resizeWidget then
+        self.resizeWidget.resizeFunction = ISBetterCraftWindow.calculateLayout
+    end
+    if self.resizeWidget2 then
+        self.resizeWidget2.resizeFunction = ISBetterCraftWindow.calculateLayout
+    end
 
     self.tabButtons = {}
     self.workstations = self:scanWorkstations()
