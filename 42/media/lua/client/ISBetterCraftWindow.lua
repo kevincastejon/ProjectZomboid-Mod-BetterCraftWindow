@@ -113,12 +113,21 @@ function ISBetterCraftWindow:scanWorkstations()
                         local craftBench = getCraftBench(obj)
 
                         if craftBench and not findEntry(result, obj) then
-                            table.insert(result, {
-                                isoObject = obj,
-                                craftBench = craftBench,
-                                name = getWorkstationName(obj),
-                                distance = getDistance(self.player, obj)
-                            })
+                            -- Match vanilla HandcraftLogic:isCharacterInRangeOfWorkbench().
+                            -- Vanilla does NOT use the square scan radius or canReachTo()
+                            -- for a specific CraftBench. It validates the exact
+                            -- workstation IsoObject with:
+                            --     isoObject:getSquare():DistToProper(player) < 3
+                            local distance = getDistance(self.player, obj)
+
+                            if distance < 3.0 then
+                                table.insert(result, {
+                                    isoObject = obj,
+                                    craftBench = craftBench,
+                                    name = getWorkstationName(obj),
+                                    distance = distance
+                                })
+                            end
                         end
                     end
                 end
