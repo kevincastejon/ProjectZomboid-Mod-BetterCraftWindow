@@ -954,7 +954,7 @@ function ISBetterCraftWindow:createChildren()
         math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10),
         math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10)
     )
-    self.refreshButton.tooltip = "Refresh entire crafting window"
+    self.refreshButton.tooltip = nil
     self.refreshButton.enable = true
     self:addChild(self.refreshButton)
 
