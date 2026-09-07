@@ -356,6 +356,10 @@ function ISBetterCraftWindow:onTabClick(button)
     end
 end
 
+function ISBetterCraftWindow:onRefreshClick(button)
+    self:refreshBCWWindow()
+end
+
 function ISBetterCraftWindow:clearTabs()
     if not self.tabButtons then
         self.tabButtons = {}
@@ -572,14 +576,31 @@ function ISBetterCraftWindow:layoutTabs()
     local gap = ISBetterCraftWindow.TAB_GAP
     local tabHeight = ISBetterCraftWindow.TAB_HEIGHT
     local x = margin
-    local y = self:titleBarHeight() + margin
-    local maxRight = self.width - margin
-    local bottom = y + tabHeight
+    local firstRowY = self:titleBarHeight() + margin
+    local y = firstRowY
+    local normalMaxRight = self.width - margin
+    local refreshWidth = self.refreshButton and self.refreshButton:getWidth() or 0
+    local firstRowMaxRight = normalMaxRight
+
+    -- Keep the refresh control permanently at the far right of the first
+    -- workstation-tab row and reserve its space so tabs never overlap it.
+    if self.refreshButton then
+        self.refreshButton:setWidth(tabHeight)
+        self.refreshButton:setHeight(tabHeight)
+        self.refreshButton:setX(self.width - margin - tabHeight)
+        self.refreshButton:setY(firstRowY)
+        firstRowMaxRight = self.refreshButton:getX() - gap
+    end
+
+    local bottom = firstRowY + tabHeight
 
     for _, button in ipairs(self.tabButtons) do
+        local maxRight = (y == firstRowY) and firstRowMaxRight or normalMaxRight
+
         if x > margin and x + button:getWidth() > maxRight then
             x = margin
             y = y + tabHeight + gap
+            maxRight = normalMaxRight
         end
 
         button:setX(x)
@@ -588,6 +609,10 @@ function ISBetterCraftWindow:layoutTabs()
 
         x = button:getRight() + gap
         bottom = math.max(bottom, button:getBottom())
+    end
+
+    if self.refreshButton then
+        bottom = math.max(bottom, self.refreshButton:getBottom())
     end
 
     return bottom + margin
@@ -910,6 +935,23 @@ function ISBetterCraftWindow:createChildren()
     self.selectedWorkstation = nil
     self.busyWorkstation = nil
     self.busyContent = nil
+
+    -- Window-wide refresh belongs to the workstation-tab row.
+    -- Use a conventional circular-arrow glyph instead of the unrelated
+    -- furniture-rotate texture previously used in the recipe filter strip.
+    self.refreshButton = ISButton:new(
+        0, 0,
+        ISBetterCraftWindow.TAB_HEIGHT,
+        ISBetterCraftWindow.TAB_HEIGHT,
+        "↻",
+        self,
+        ISBetterCraftWindow.onRefreshClick
+    )
+    self.refreshButton:initialise()
+    self.refreshButton:instantiate()
+    self.refreshButton.tooltip = "Refresh entire crafting window"
+    self.refreshButton.enable = true
+    self:addChild(self.refreshButton)
 
     self:rebuildTabs()
     self:createHandCraftPanel(nil)

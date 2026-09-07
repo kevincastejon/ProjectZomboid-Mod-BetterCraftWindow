@@ -73,20 +73,6 @@ function ISBCWRecipeFilterPanel:createChildren()
 
     self:addChild(self.unknownRecipeButton)
 
-    self.refreshButton = ISXuiSkin.build(
-        self.xuiSkin,
-        "S_NeedsAStyle",
-        ISButton,
-        0, 0, BUTTON_HGT, BUTTON_HGT,
-        nil
-    )
-    self.refreshButton.image = getTexture("media/ui/Sidebar/48/Furniture_Rotate_48.png")
-    self.refreshButton.target = self
-    self.refreshButton.onclick = ISBCWRecipeFilterPanel.onBCWButtonClick
-    self.refreshButton.enable = true
-    self.refreshButton:initialise()
-    self.refreshButton:instantiate()
-    self:addChild(self.refreshButton)
 
     self:updateBCWButtons()
 end
@@ -118,9 +104,6 @@ function ISBCWRecipeFilterPanel:updateBCWButtons()
             or "Unknown recipes hidden. Click to show them."
     end
 
-    if self.refreshButton then
-        self.refreshButton.tooltip = "Refresh crafting data"
-    end
 end
 
 function ISBCWRecipeFilterPanel:onBCWButtonClick(button)
@@ -132,14 +115,6 @@ function ISBCWRecipeFilterPanel:onBCWButtonClick(button)
         return
     end
 
-    if button == self.refreshButton then
-        if self.callbackTarget and self.callbackTarget.refreshBCWWindow then
-            self.callbackTarget:refreshBCWWindow()
-        elseif self.callbackTarget and self.callbackTarget.refreshBCWCraftingData then
-            self.callbackTarget:refreshBCWCraftingData(true)
-        end
-        return
-    end
 
     ISWidgetRecipeFilterPanel.onButtonClick(self, button)
 end
@@ -158,13 +133,9 @@ function ISBCWRecipeFilterPanel:calculateLayout(_preferredWidth, _preferredHeigh
         self.sortCombo:setWidth(targetWidth)
     end
 
-    -- Right-side action strip: view mode, unknown toggle, refresh.
-    self.refreshButton:setX(width - self.refreshButton:getWidth() - x)
-    self.refreshButton:setY(x)
-
-    self.unknownRecipeButton:setX(
-        self.refreshButton:getX() - self.unknownRecipeButton:getWidth() - UI_BORDER_SPACING
-    )
+    -- Right-side action strip: view mode + unknown toggle.
+    -- Window-wide refresh now lives on the workstation-tab row.
+    self.unknownRecipeButton:setX(width - self.unknownRecipeButton:getWidth() - x)
     self.unknownRecipeButton:setY(x)
 
     self.viewModeButton:setX(
@@ -199,7 +170,7 @@ function ISBCWRecipeFilterPanel:calculateLayout(_preferredWidth, _preferredHeigh
             self.sortCombo:setX(self.filterTypeCombo:getX())
         else
             self.sortCombo:setX(
-                self.refreshButton:getX() + self.refreshButton:getWidth() - self.sortCombo:getWidth()
+                width - x - self.sortCombo:getWidth()
             )
         end
         self.sortCombo:setY(y)
@@ -232,7 +203,6 @@ function ISBCWRecipeFilterPanel:calculateLayout(_preferredWidth, _preferredHeigh
     local rightControlsWidth =
         self.viewModeButton:getWidth()
         + self.unknownRecipeButton:getWidth()
-        + self.refreshButton:getWidth()
         + (UI_BORDER_SPACING * 2)
 
     local comboWidth = self.sortCombo and self.sortCombo:getWidth() or 0
