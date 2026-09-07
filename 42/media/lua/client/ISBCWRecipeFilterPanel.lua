@@ -133,8 +133,10 @@ function ISBCWRecipeFilterPanel:onBCWButtonClick(button)
     end
 
     if button == self.refreshButton then
-        if self.callbackTarget and self.callbackTarget.refreshBCWCraftingData then
-            self.callbackTarget:refreshBCWCraftingData()
+        if self.callbackTarget and self.callbackTarget.refreshBCWWindow then
+            self.callbackTarget:refreshBCWWindow()
+        elseif self.callbackTarget and self.callbackTarget.refreshBCWCraftingData then
+            self.callbackTarget:refreshBCWCraftingData(true)
         end
         return
     end

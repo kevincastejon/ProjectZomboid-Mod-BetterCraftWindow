@@ -910,7 +910,7 @@ function ISBCWHandCraftPanel:toggleBCWHideUnknownRecipes()
     end
 end
 
-function ISBCWHandCraftPanel:refreshBCWCraftingData()
+function ISBCWHandCraftPanel:refreshBCWCraftingData(forceItemListRebuild)
     -- Force a complete client-side rescan of inventory containers and recipe
     -- availability. This is intentionally a manual workaround for vanilla UI
     -- states that can remain stale after inventory changes.
@@ -926,7 +926,9 @@ function ISBCWHandCraftPanel:refreshBCWCraftingData()
         self.logic:setRecipes(ScriptManager.instance:getAllCraftRecipes())
     end
 
-    self:rebuildBCWCraftItemList()
+    -- A manual/full refresh is allowed to rebuild the item universe once.
+    -- Periodic vanilla dirty refreshes still use the cached fast path.
+    self:rebuildBCWCraftItemList(forceItemListRebuild == true)
     self:applyBCWCraftItemRecipeFilter()
 
     self.logic:autoPopulateInputs()
@@ -935,6 +937,20 @@ function ISBCWHandCraftPanel:refreshBCWCraftingData()
 
     -- Rebuild the dynamic detail widgets against the fresh cached state.
     self:xuiRecalculateLayout()
+end
+
+function ISBCWHandCraftPanel:refreshBCWWindow()
+    -- The refresh button belongs to this panel, but the requested operation
+    -- is window-wide: workstation discovery/tabs first, then the currently
+    -- active crafting panel and its filters/details.
+    local window = self.parent
+    if window and window.refreshBCWWindow then
+        window:refreshBCWWindow()
+        return
+    end
+
+    -- Safe fallback if this panel is ever hosted outside ISBetterCraftWindow.
+    self:refreshBCWCraftingData(true)
 end
 
 function ISBCWHandCraftPanel:new(

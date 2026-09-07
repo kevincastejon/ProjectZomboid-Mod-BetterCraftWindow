@@ -915,6 +915,30 @@ function ISBetterCraftWindow:createChildren()
     self:createHandCraftPanel(nil)
 end
 
+function ISBetterCraftWindow:refreshBCWWindow()
+    if not self.player or self.player:isDead() then
+        return
+    end
+
+    -- Re-evaluate the complete workstation/tab state immediately using the
+    -- same rules as the periodic world refresh. This may legitimately switch
+    -- back to ALL if the selected workstation is no longer in range.
+    self:refreshWorkstations(true)
+
+    -- refreshWorkstations() can replace/destroy the hand-craft panel when the
+    -- current workstation context changes, so always fetch the live panel
+    -- after that operation rather than using the old button owner.
+    local panel = self.handCraftPanel
+    if panel and panel.refreshBCWCraftingData then
+        panel:refreshBCWCraftingData(true)
+    end
+
+    -- Force a complete layout pass so tabs, filters, recipe/details and
+    -- resize-dependent geometry all reflect the freshly rebuilt state.
+    self:calculateLayout(self.width, self.height)
+    self.dirtyLayout = true
+end
+
 function ISBetterCraftWindow:update()
     ISCollapsableWindow.update(self)
 
