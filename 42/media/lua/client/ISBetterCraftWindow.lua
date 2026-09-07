@@ -2,21 +2,14 @@ require "ISUI/ISCollapsableWindow"
 require "ISUI/ISButton"
 require "ISUI/ISUIElement"
 require "Entity/ISEntityUI"
-require "ISBCWHandCraftPanel"
+require "ISBetterCraftHandCraftPanel"
 
 ISBetterCraftWindow = ISCollapsableWindow:derive("ISBetterCraftWindow")
 
 ISBetterCraftWindow.instances = {}
 ISBetterCraftWindow.SCAN_RADIUS = 3
 ISBetterCraftWindow.SCAN_INTERVAL = 60
-ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN = true
 
-local function bcwNowMs()
-    if getTimestampMs then
-        return getTimestampMs()
-    end
-    return 0
-end
 ISBetterCraftWindow.TAB_HEIGHT = 28
 ISBetterCraftWindow.TAB_MARGIN = 6
 ISBetterCraftWindow.TAB_GAP = 4
@@ -71,7 +64,6 @@ local function findEntry(list, obj)
 end
 
 function ISBetterCraftWindow:scanWorkstations()
-    local _bcwScanStart = bcwNowMs()
     local result = {}
 
     if not self.player or not self.player:getSquare() then
@@ -143,30 +135,6 @@ function ISBetterCraftWindow:scanWorkstations()
     end)
     for _, entry in ipairs(result) do
         entry.displayName = entry.name
-    end
-
-    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN then
-        local ps = self.player and self.player:getSquare()
-        print(string.format(
-            "[BCW SCAN] scan=%dms player=%d,%d,%d found=%d",
-            bcwNowMs() - _bcwScanStart,
-            ps and ps:getX() or -1,
-            ps and ps:getY() or -1,
-            ps and ps:getZ() or -1,
-            #result
-        ))
-
-        for _, entry in ipairs(result) do
-            local sq = entry.isoObject and entry.isoObject:getSquare()
-            print(string.format(
-                "[BCW SCAN]   + %s anchor=%d,%d,%d dist=%.2f",
-                tostring(entry.displayName or entry.name or "?"),
-                sq and sq:getX() or -1,
-                sq and sq:getY() or -1,
-                sq and sq:getZ() or -1,
-                tonumber(entry.distance) or -1
-            ))
-        end
     end
 
     return result
@@ -453,65 +421,18 @@ function ISBetterCraftWindow:workstationListsDiffer(oldList, newList)
 end
 
 function ISBetterCraftWindow:refreshWorkstations(force)
-    local _bcwRefreshStart = bcwNowMs()
     local oldList = self.workstations or {}
-
-    local _bcwBeforeScan = bcwNowMs()
     local newList = self:scanWorkstations()
-    local _bcwAfterScan = bcwNowMs()
-
-    local _bcwBeforeCompare = bcwNowMs()
     local changed = force or self:workstationListsDiffer(oldList, newList)
-    local _bcwAfterCompare = bcwNowMs()
 
-    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN and changed then
-        for _, oldEntry in ipairs(oldList) do
-            if not findEntry(newList, oldEntry.isoObject) then
-                local sq = oldEntry.isoObject and oldEntry.isoObject:getSquare()
-                print(string.format(
-                    "[BCW SCAN] REMOVED %s anchor=%d,%d,%d",
-                    tostring(oldEntry.displayName or oldEntry.name or "?"),
-                    sq and sq:getX() or -1,
-                    sq and sq:getY() or -1,
-                    sq and sq:getZ() or -1
-                ))
-            end
-        end
-
-        for _, newEntry in ipairs(newList) do
-            if not findEntry(oldList, newEntry.isoObject) then
-                local sq = newEntry.isoObject and newEntry.isoObject:getSquare()
-                print(string.format(
-                    "[BCW SCAN] ADDED %s anchor=%d,%d,%d",
-                    tostring(newEntry.displayName or newEntry.name or "?"),
-                    sq and sq:getX() or -1,
-                    sq and sq:getY() or -1,
-                    sq and sq:getZ() or -1
-                ))
-            end
-        end
-    end
 
     self.workstations = newList
-
-    local _bcwBeforeTabs = bcwNowMs()
     if changed then
         self:rebuildTabs()
     else
         self:updateTabState()
     end
-    local _bcwAfterTabs = bcwNowMs()
 
-    if ISBetterCraftWindow.DEBUG_WORKSTATION_SCAN then
-        print(string.format(
-            "[BCW PERF] scan=%dms compare=%dms tabs+availability=%dms subtotal=%dms changed=%s",
-            _bcwAfterScan - _bcwBeforeScan,
-            _bcwAfterCompare - _bcwBeforeCompare,
-            _bcwAfterTabs - _bcwBeforeTabs,
-            bcwNowMs() - _bcwRefreshStart,
-            tostring(changed)
-        ))
-    end
 
     if self.selectedWorkstation
         and not findEntry(self.workstations, self.selectedWorkstation)
@@ -949,7 +870,7 @@ function ISBetterCraftWindow:createChildren()
     )
     self.refreshButton:initialise()
     self.refreshButton:instantiate()
-    self.refreshButton:setImage(getTexture("media/textures/BCW_Refresh.png"))
+    self.refreshButton:setImage(getTexture("media/textures/BetterCraft_Refresh.png"))
     self.refreshButton:forceImageSize(
         math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10),
         math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10)

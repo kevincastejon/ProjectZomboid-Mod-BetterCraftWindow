@@ -1,21 +1,21 @@
 require "ISUI/ISPanel"
 require "BetterCraftXpUtils"
 
-ISWidgetRecipeXP = ISPanel:derive("ISWidgetRecipeXP")
+ISBetterCraftRecipeXP = ISPanel:derive("ISBetterCraftRecipeXP")
 
-function ISWidgetRecipeXP:initialise()
+function ISBetterCraftRecipeXP:initialise()
     ISPanel.initialise(self)
 end
 
-function ISWidgetRecipeXP:createChildren()
+function ISBetterCraftRecipeXP:createChildren()
     ISPanel.createChildren(self)
 end
 
-function ISWidgetRecipeXP:getAwards()
-    return BCWXpUtils.getAwards(self.player, self.logic and self.logic:getRecipe() or nil)
+function ISBetterCraftRecipeXP:getAwards()
+    return BetterCraftXpUtils.getAwards(self.player, self.logic and self.logic:getRecipe() or nil)
 end
 
-function ISWidgetRecipeXP:calculateLayout(preferredWidth, preferredHeight)
+function ISBetterCraftRecipeXP:calculateLayout(preferredWidth, preferredHeight)
     local width = math.max(self.minimumWidth, preferredWidth or 0)
     local awards = self:getAwards()
     local lineHeight = getTextManager():getFontHeight(UIFont.Small)
@@ -29,9 +29,7 @@ function ISWidgetRecipeXP:calculateLayout(preferredWidth, preferredHeight)
     self:setHeight(math.max(height, self.minimumHeight))
 end
 
-function ISWidgetRecipeXP:getPerkIconSize()
-    -- Keep the same visual scale as the 16px perk sub-icons used in the
-    -- central recipe list.
+function ISBetterCraftRecipeXP:getPerkIconSize()
     local fontScale = getTextManager():getFontHeight(UIFont.Small) / 19
     local iconScale = math.max(
         1,
@@ -42,7 +40,7 @@ function ISWidgetRecipeXP:getPerkIconSize()
     return 16 * iconScale
 end
 
-function ISWidgetRecipeXP:prerender()
+function ISBetterCraftRecipeXP:prerender()
     ISPanel.prerender(self)
     local awards = self:getAwards()
     local x, y = self.margin, self.margin
@@ -56,8 +54,8 @@ function ISWidgetRecipeXP:prerender()
 
     local good = getCore():getGoodHighlitedColor()
     for _, award in ipairs(awards) do
-        local amountText = "+" .. BCWXpUtils.formatXP(award.amount) .. " XP"
-        local icon = BCWXpUtils.getPerkIconTexture(award.perk)
+        local amountText = "+" .. BetterCraftXpUtils.formatXP(award.amount) .. " XP"
+        local icon = BetterCraftXpUtils.getPerkIconTexture(award.perk)
 
         if icon then
             self:drawTextureScaledAspect(
@@ -93,7 +91,7 @@ function ISWidgetRecipeXP:prerender()
     end
 end
 
-function ISWidgetRecipeXP:new(x, y, width, height, player, logic)
+function ISBetterCraftRecipeXP:new(x, y, width, height, player, logic)
     local o = ISPanel:new(x, y, width, height)
     setmetatable(o, self)
     self.__index = self
