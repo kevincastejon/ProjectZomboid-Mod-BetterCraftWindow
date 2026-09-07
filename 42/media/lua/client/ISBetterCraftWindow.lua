@@ -943,12 +943,17 @@ function ISBetterCraftWindow:createChildren()
         0, 0,
         ISBetterCraftWindow.TAB_HEIGHT,
         ISBetterCraftWindow.TAB_HEIGHT,
-        "↻",
+        "",
         self,
         ISBetterCraftWindow.onRefreshClick
     )
     self.refreshButton:initialise()
     self.refreshButton:instantiate()
+    self.refreshButton:setImage(getTexture("media/textures/BCW_Refresh.png"))
+    self.refreshButton:forceImageSize(
+        math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10),
+        math.max(14, ISBetterCraftWindow.TAB_HEIGHT - 10)
+    )
     self.refreshButton.tooltip = "Refresh entire crafting window"
     self.refreshButton.enable = true
     self:addChild(self.refreshButton)
