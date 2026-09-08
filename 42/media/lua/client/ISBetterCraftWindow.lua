@@ -42,6 +42,56 @@ local function getWorkstationName(obj)
     return "Workstation"
 end
 
+local function getLocalizedCraftingLabel(key)
+    if not key or key == "" then
+        return nil
+    end
+
+    local translated = getTextOrNull("IGUI_CraftingWindow_" .. tostring(key))
+    if translated and translated ~= "" then
+        return translated
+    end
+
+    -- Some vanilla workstation translation keys use an initial capital even
+    -- though CraftBench recipe-tag queries are lower-case.
+    local value = tostring(key)
+    local capitalized = string.upper(string.sub(value, 1, 1)) .. string.sub(value, 2)
+    translated = getTextOrNull("IGUI_CraftingWindow_" .. capitalized)
+
+    if translated and translated ~= "" then
+        return translated
+    end
+
+    return nil
+end
+
+local function getLocalizedWorkstationName(obj, craftBench)
+    local rawName = getWorkstationName(obj)
+
+    -- Prefer an explicit vanilla crafting-window translation for the entity
+    -- name when one exists (Forge, Grindstone, MetalBandsaw, etc.).
+    local translated = getLocalizedCraftingLabel(rawName)
+    if translated then
+        return translated
+    end
+
+    -- Many entity-script names differ from the recipe tag used by vanilla's
+    -- localized crafting requirement strings (Pottery_Wheel -> potterywheel,
+    -- Advanced_Forge -> advancedforge, etc.). Fall back to the CraftBench query.
+    local query = craftBench and craftBench:getRecipeTagQuery() or nil
+    if query and query ~= "" then
+        for tag in string.gmatch(tostring(query), "[^;]+") do
+            tag = string.gsub(tag, "^%s*(.-)%s*$", "%1")
+            translated = getLocalizedCraftingLabel(tag)
+            if translated then
+                return translated
+            end
+        end
+    end
+
+    return rawName
+end
+
 local function getDistance(player, obj)
     if not player or not obj or not obj:getSquare() then
         return 999999
@@ -117,6 +167,7 @@ function ISBetterCraftWindow:scanWorkstations()
                                     isoObject = obj,
                                     craftBench = craftBench,
                                     name = getWorkstationName(obj),
+                                    displayName = getLocalizedWorkstationName(obj, craftBench),
                                     distance = distance
                                 })
                             end
@@ -133,10 +184,6 @@ function ISBetterCraftWindow:scanWorkstations()
         end
         return a.name < b.name
     end)
-    for _, entry in ipairs(result) do
-        entry.displayName = entry.name
-    end
-
     return result
 end
 
@@ -363,7 +410,7 @@ end
 
 function ISBetterCraftWindow:rebuildTabs()
     self:clearTabs()
-    self:createTab("ALL", nil)
+    self:createTab(getTextOrNull("UI_All") or getTextOrNull("ContextMenu_All") or "ALL", nil)
 
     for _, entry in ipairs(self.workstations) do
         self:createTab(entry.displayName, entry)
@@ -986,7 +1033,7 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
 
     o.player = player
     o.playerNum = player:getPlayerNum()
-    o.title = "Better Craft Window"
+    o.title = ""
     o.minimumWidth = 1050
     o.minimumHeight = 550
     o.resizable = true
@@ -1033,30 +1080,11 @@ function ISBetterCraftWindow:selectWorkstationObject(isoObject)
             isoObject = isoObject,
             craftBench = craftBench,
             name = getWorkstationName(isoObject),
-            displayName = getWorkstationName(isoObject),
+            displayName = getLocalizedWorkstationName(isoObject, craftBench),
             distance = getDistance(self.player, isoObject)
         }
 
         table.insert(self.workstations, entry)
-
-        -- Rebuild duplicate numbering exactly like scanWorkstations().
-        local totals = {}
-        local counts = {}
-
-        for _, workstation in ipairs(self.workstations) do
-            totals[workstation.name] = (totals[workstation.name] or 0) + 1
-        end
-
-        for _, workstation in ipairs(self.workstations) do
-            local name = workstation.name
-            counts[name] = (counts[name] or 0) + 1
-
-            if totals[name] > 1 then
-                workstation.displayName = name .. " (" .. tostring(counts[name]) .. ")"
-            else
-                workstation.displayName = name
-            end
-        end
 
         self:rebuildTabs()
     end

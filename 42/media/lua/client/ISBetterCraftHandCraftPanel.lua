@@ -731,6 +731,49 @@ function ISBCWHandCraftPanel:setBCWItemSearchText(itemName)
     panel:onSearchTextChanged()
 end
 
+-- Mirrors vanilla OpenHandcraftWindow(..., itemString) behavior for the
+-- inventory context-menu action "Show crafting recipes", while displaying the
+-- localized item name in the visible recipe-search field.
+function ISBCWHandCraftPanel:setBCWRecipeSearchForItem(itemString)
+    if not itemString or itemString == "" then
+        return
+    end
+
+    local filterPanel = self.recipesPanel and self.recipesPanel.recipeFilterPanel
+    if not filterPanel or not filterPanel.searchEntryBox then
+        return
+    end
+
+    local fullType = tostring(itemString)
+    if string.sub(fullType, 1, 1) == "!" then
+        fullType = string.sub(fullType, 2)
+    end
+
+    local scriptItem = ScriptManager.instance:getItem(fullType)
+    local displayName = scriptItem and scriptItem:getDisplayName() or fullType
+
+    -- Keep vanilla's exact internal item filter string (normally "!Base.X")
+    -- so InputName filtering targets the clicked item rather than doing a
+    -- loose text search. Only the visible edit box shows the friendly name.
+    self._filterString = tostring(itemString)
+    self._filterMode = "InputName"
+
+    if filterPanel.filterTypeCombo then
+        filterPanel.filterTypeCombo:setSelected(2)
+    end
+    filterPanel.searchEntryBox:setText(displayName)
+
+    self:applyBCWCraftItemRecipeFilter()
+    self.logic:checkValidRecipeSelected()
+
+    local recipeList = self.logic:getRecipeList()
+    if recipeList and recipeList:getFirstRecipe() then
+        self.logic:setRecipe(recipeList:getFirstRecipe())
+    end
+
+    self:onRecipeChanged(self.logic:getRecipe())
+end
+
 function ISBCWHandCraftPanel:onBCWCraftItemFilterChanged(entry)
     if not entry or entry.isAll then
         self.bcwSelectedCraftItemFullName = nil

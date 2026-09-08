@@ -16,9 +16,33 @@ function ISEntityUI.OpenHandcraftWindow(player, isoObject, recipeFilter, ...)
         return vanillaOpenHandcraftWindow(player, isoObject, recipeFilter, ...)
     end
 
-    -- Generic crafting always opens/toggles BCW on ALL.
-    -- recipeFilter (including Project Cook's Alt-click "*") is intentionally
-    -- not forwarded because BCW owns its own filtering UI.
+    -- Vanilla's inventory context-menu action calls:
+    -- OpenHandcraftWindow(player, nil, "*", false, nil, "!Base.ItemType")
+    -- Preserve that special item-search request instead of treating it like
+    -- the normal Crafting-button toggle.
+    local extra = { ... }
+    local itemString = extra[3]
+
+    if itemString and itemString ~= "" then
+        local window = ISBetterCraftWindow.open(player)
+        if not window then
+            return
+        end
+
+        -- The inventory recipe lookup is always a generic/ALL context.
+        window:setContext(nil)
+
+        if window.handCraftPanel and window.handCraftPanel.setBCWRecipeSearchForItem then
+            window.handCraftPanel:setBCWRecipeSearchForItem(itemString)
+        end
+
+        window:bringToTop()
+        return
+    end
+
+    -- Generic crafting keeps the existing toggle behavior. recipeFilter
+    -- (including Project Cook's Alt-click "*") remains intentionally ignored
+    -- because BCW owns its own filtering UI.
     ISBetterCraftWindow.toggle(player)
 end
 
