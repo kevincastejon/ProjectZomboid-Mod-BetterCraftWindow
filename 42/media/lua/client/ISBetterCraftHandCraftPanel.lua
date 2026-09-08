@@ -134,9 +134,93 @@ function ISBCWHandCraftPanel:createRecipePanel()
     self.rootTable:setElement(self.recipePanelColumn:index(), 0, self.recipePanel)
 end
 
+
+local bcwAvailableWorkstationRecipeTags = nil
+local bcwFilteredAllCraftRecipes = nil
+
+local function getBCWAvailableWorkstationRecipeTags()
+    if bcwAvailableWorkstationRecipeTags then
+        return bcwAvailableWorkstationRecipeTags
+    end
+
+    local tags = {}
+    local entities = ScriptManager.instance:getAllGameEntities()
+
+    if entities then
+        for i = 0, entities:size() - 1 do
+            local entityScript = entities:get(i)
+
+            if entityScript and entityScript:containsComponent(ComponentType.CraftBench) then
+                local craftBenchScript =
+                    entityScript:getComponentScriptFor(ComponentType.CraftBench)
+                local query =
+                    craftBenchScript and craftBenchScript:getRecipeTagQuery() or nil
+
+                if query and query ~= "" then
+                    for tag in string.gmatch(tostring(query), "[^;]+") do
+                        tag = string.gsub(tag, "^%s*(.-)%s*$", "%1")
+
+                        if tag ~= "" then
+                            tags[tag] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    bcwAvailableWorkstationRecipeTags = tags
+    return bcwAvailableWorkstationRecipeTags
+end
+
+local function bcwRecipeHasExistingSpecificWorkstation(recipe, availableTags)
+    if not recipe or not recipe:requiresSpecificWorkstation() then
+        return true
+    end
+
+    local recipeTags = recipe:getTags()
+    if not recipeTags then
+        return false
+    end
+
+    for i = 0, recipeTags:size() - 1 do
+        local rawTag = recipeTags:get(i)
+
+        if availableTags[rawTag] == true
+            or availableTags[tostring(rawTag)] == true then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function getBCWFilteredAllCraftRecipes()
+    if bcwFilteredAllCraftRecipes then
+        return bcwFilteredAllCraftRecipes
+    end
+
+    local allRecipes = ScriptManager.instance:getAllCraftRecipes()
+    local availableTags = getBCWAvailableWorkstationRecipeTags()
+    local filtered = ArrayList.new()
+
+    if allRecipes then
+        for i = 0, allRecipes:size() - 1 do
+            local recipe = allRecipes:get(i)
+
+            if bcwRecipeHasExistingSpecificWorkstation(recipe, availableTags) then
+                filtered:add(recipe)
+            end
+        end
+    end
+
+    bcwFilteredAllCraftRecipes = filtered
+    return bcwFilteredAllCraftRecipes
+end
+
 function ISBCWHandCraftPanel:getBCWBaseRecipeList()
     if self.seeAllRecipe then
-        return ScriptManager.instance:getAllCraftRecipes()
+        return getBCWFilteredAllCraftRecipes()
     end
 
     if self.recipeQuery then
@@ -709,7 +793,13 @@ function ISBCWHandCraftPanel:refreshRecipeList(forceRefresh)
     ISHandCraftPanel.refreshRecipeList(self, forceRefresh)
     self:rebuildBCWCraftItemList()
 
-    if self.bcwSelectedCraftItemFullName ~= nil or self.bcwShowUnknownRecipes == true then
+    -- Vanilla refreshRecipeList() repopulates HandcraftLogic from its normal
+    -- source. In ALL mode that restores getAllCraftRecipes(), so the cached
+    -- workstation-availability filter must be re-applied after every vanilla
+    -- recipe refresh, even when no BCW item/unknown filter is active.
+    if self.seeAllRecipe
+        or self.bcwSelectedCraftItemFullName ~= nil
+        or self.bcwShowUnknownRecipes == true then
         self:applyBCWCraftItemRecipeFilter()
     end
 end
@@ -742,7 +832,7 @@ function ISBCWHandCraftPanel:refreshBCWCraftingData(forceItemListRebuild)
     end
 
     if self.seeAllRecipe then
-        self.logic:setRecipes(ScriptManager.instance:getAllCraftRecipes())
+        self.logic:setRecipes(getBCWFilteredAllCraftRecipes())
     end
 
     -- A manual/full refresh is allowed to rebuild the item universe once.
