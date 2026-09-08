@@ -139,6 +139,11 @@ function ISBCWCraftItemFilterPanel:rebuildVisibleList()
         search = string.lower(self.searchEntry:getInternalText() or "")
     end
 
+    local exactFullName = nil
+    if string.sub(search, 1, 1) == "!" then
+        exactFullName = string.sub(search, 2)
+    end
+
     self.itemList:clear()
 
     local allEntry = {
@@ -157,9 +162,19 @@ function ISBCWCraftItemFilterPanel:rebuildVisibleList()
     for _, entry in ipairs(self.items) do
         if self:entryMatchesType(entry) then
             local displayName = entry.displayName or entry.fullName or "Unknown"
+            local fullName = string.lower(entry.fullName or "")
             local haystack = string.lower(displayName .. " " .. (entry.fullName or ""))
 
-            if search == "" or string.find(haystack, search, 1, true) then
+            local matchesSearch
+            if search == "" then
+                matchesSearch = true
+            elseif exactFullName ~= nil then
+                matchesSearch = exactFullName ~= "" and fullName == exactFullName
+            else
+                matchesSearch = string.find(haystack, search, 1, true) ~= nil
+            end
+
+            if matchesSearch then
                 local listItem = self.itemList:addItem(displayName, entry)
 
                 if self.selectedFullName and entry.fullName == self.selectedFullName then

@@ -744,24 +744,25 @@ function ISBCWHandCraftPanel:setBCWRecipeSearchForItem(itemString)
         return
     end
 
-    local fullType = tostring(itemString)
-    if string.sub(fullType, 1, 1) == "!" then
-        fullType = string.sub(fullType, 2)
-    end
+    local searchToken = tostring(itemString)
 
-    local scriptItem = ScriptManager.instance:getItem(fullType)
-    local displayName = scriptItem and scriptItem:getDisplayName() or fullType
-
-    -- Keep vanilla's exact internal item filter string (normally "!Base.X")
-    -- so InputName filtering targets the clicked item rather than doing a
-    -- loose text search. Only the visible edit box shows the friendly name.
-    self._filterString = tostring(itemString)
+    -- Match vanilla exactly: the context-menu recipe lookup uses an InputName
+    -- filter whose visible search text is the special !Base.ItemName token.
+    self._filterString = searchToken
     self._filterMode = "InputName"
 
     if filterPanel.filterTypeCombo then
         filterPanel.filterTypeCombo:setSelected(2)
     end
-    filterPanel.searchEntryBox:setText(displayName)
+    filterPanel.searchEntryBox:setText(searchToken)
+
+    -- Mirror the same vanilla token into BCW's custom item-list search.
+    -- ISBCWCraftItemFilterPanel understands both normal text searches and
+    -- !Full.Type exact searches.
+    if self.bcwCraftItemFilterPanel and self.bcwCraftItemFilterPanel.searchEntry then
+        self.bcwCraftItemFilterPanel.searchEntry:setText(searchToken)
+        self.bcwCraftItemFilterPanel:onSearchTextChanged()
+    end
 
     self:applyBCWCraftItemRecipeFilter()
     self.logic:checkValidRecipeSelected()

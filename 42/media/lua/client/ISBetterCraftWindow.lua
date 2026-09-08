@@ -1033,7 +1033,7 @@ function ISBetterCraftWindow:new(x, y, width, height, player)
 
     o.player = player
     o.playerNum = player:getPlayerNum()
-    o.title = ""
+    o.title = getText("IGUI_CraftingTooltip")
     o.minimumWidth = 1050
     o.minimumHeight = 550
     o.resizable = true
