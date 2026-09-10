@@ -52,44 +52,49 @@ local function getLocalizedCraftingLabel(key)
         return translated
     end
 
-    -- Some vanilla workstation translation keys use an initial capital even
-    -- though CraftBench recipe-tag queries are lower-case.
-    local value = tostring(key)
-    local capitalized = string.upper(string.sub(value, 1, 1)) .. string.sub(value, 2)
-    translated = getTextOrNull("IGUI_CraftingWindow_" .. capitalized)
-
-    if translated and translated ~= "" then
-        return translated
-    end
-
     return nil
 end
 
-local function getLocalizedWorkstationName(obj, craftBench)
-    local rawName = getWorkstationName(obj)
-
-    -- Prefer an explicit vanilla crafting-window translation for the entity
-    -- name when one exists (Forge, Grindstone, MetalBandsaw, etc.).
-    local translated = getLocalizedCraftingLabel(rawName)
-    if translated then
-        return translated
+local function getWorkstationEntityScriptName(obj)
+    if not obj or not obj.getEntityScript then
+        return nil
     end
 
-    -- Many entity-script names differ from the recipe tag used by vanilla's
-    -- localized crafting requirement strings (Pottery_Wheel -> potterywheel,
-    -- Advanced_Forge -> advancedforge, etc.). Fall back to the CraftBench query.
-    local query = craftBench and craftBench:getRecipeTagQuery() or nil
-    if query and query ~= "" then
-        for tag in string.gmatch(tostring(query), "[^;]+") do
-            tag = string.gsub(tag, "^%s*(.-)%s*$", "%1")
-            translated = getLocalizedCraftingLabel(tag)
-            if translated then
-                return translated
-            end
+    local entityScript = obj:getEntityScript()
+    if not entityScript then
+        return nil
+    end
+
+    local name = entityScript:getName()
+    if not name or name == "" then
+        return nil
+    end
+
+    return tostring(name)
+end
+
+local function getLocalizedWorkstationName(obj, craftBench)
+    -- Use the workstation's own entity-script identity for its tab label.
+    -- RecipeTagQuery is deliberately NOT used here: it describes the recipe
+    -- families a bench accepts, not the workstation's identity.
+    local entityName = getWorkstationEntityScriptName(obj)
+
+    if entityName then
+        -- Vanilla workstation translation keys generally correspond to the
+        -- entity-script name with separators removed:
+        -- Advanced_Forge -> IGUI_CraftingWindow_AdvancedForge
+        -- Pottery_Wheel  -> IGUI_CraftingWindow_PotteryWheel
+        local key = string.gsub(entityName, "[^%w]", "")
+        local translated = getLocalizedCraftingLabel(key)
+
+        if translated then
+            return translated
         end
     end
 
-    return rawName
+    -- If vanilla has no dedicated CraftingWindow translation for this exact
+    -- entity, keep the object's own name as the language-aware fallback.
+    return getWorkstationName(obj)
 end
 
 local function getDistance(player, obj)
